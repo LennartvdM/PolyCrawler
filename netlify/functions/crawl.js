@@ -113,6 +113,7 @@ export default async (request, context) => {
         results.push({
           marketTitle: market.title,
           marketSlug: market.slug,
+          eventTitle: market.eventTitle,
           marketConditionId: market.conditionId,
           marketVolume: market.volume,
           marketEndDate: market.endDate,
@@ -184,6 +185,7 @@ async function fetchMarketsAndPeople(limit, topN, log) {
           for (const market of event.markets) {
             market._source = 'events';
             market._eventSlug = event.slug; // Store parent event slug
+            market._eventTitle = event.title || event.question || null; // Store parent event title
             allMarkets.push(market);
           }
         }
@@ -250,6 +252,7 @@ async function fetchMarketsAndPeople(limit, topN, log) {
         existingPerson.markets.push({
           title: processed.title,
           slug: processed.slug,
+          eventTitle: processed.eventTitle,
           conditionId: processed.conditionId,
           volume: processed.volume,
           endDate: processed.endDate,
@@ -309,6 +312,7 @@ function findExistingPerson(name, peopleList) {
 function extractPeopleFromMarket(market, topN) {
   const title = market.question || market.title || 'Unknown';
   const slug = market._eventSlug || market.slug || '';
+  const eventTitle = market._eventTitle || null; // Parent event title (for grouping)
   const conditionId = market.conditionId || market.condition_id || '';
   const volume = parseFloat(market.volume || 0);
   const endDate = market.endDate || market.end_date_iso || null;
@@ -331,7 +335,7 @@ function extractPeopleFromMarket(market, topN) {
     }
   }
 
-  return { title, slug, conditionId, volume, endDate, people };
+  return { title, slug, eventTitle, conditionId, volume, endDate, people };
 }
 
 /**
