@@ -221,7 +221,7 @@ async function fetchMarketsAndPeople(limit, topN, log) {
 
   // Extract people from markets
   const markets = [];
-  const peopleMap = new Map(); // nameKey -> { name, markets: [...] }
+  const peopleList = []; // Array of { name, nameKey, markets: [...] }
 
   for (const market of allMarkets) {
     const processed = extractPeopleFromMarket(market, topN);
@@ -229,15 +229,25 @@ async function fetchMarketsAndPeople(limit, topN, log) {
       markets.push(processed);
 
       for (const person of processed.people) {
-        const nameKey = person.name.toLowerCase();
-        if (!peopleMap.has(nameKey)) {
-          peopleMap.set(nameKey, {
+        // Find existing person using smart deduplication
+        let existingPerson = findExistingPerson(person.name, peopleList);
+
+        if (!existingPerson) {
+          existingPerson = {
             name: person.name,
-            nameKey,
+            nameKey: person.name.toLowerCase(),
             markets: []
-          });
+          };
+          peopleList.push(existingPerson);
+        } else {
+          // Prefer the longer/fuller name
+          if (person.name.length > existingPerson.name.length) {
+            existingPerson.name = person.name;
+            existingPerson.nameKey = person.name.toLowerCase();
+          }
         }
-        peopleMap.get(nameKey).markets.push({
+
+        existingPerson.markets.push({
           title: processed.title,
           slug: processed.slug,
           conditionId: processed.conditionId,
@@ -250,13 +260,47 @@ async function fetchMarketsAndPeople(limit, topN, log) {
     }
   }
 
-  const people = Array.from(peopleMap.values());
   log('INFO', 'People extracted', {
     marketsWithPeople: markets.length,
-    uniquePeople: people.length
+    uniquePeople: peopleList.length
   });
 
-  return { markets, people };
+  return { markets, people: peopleList };
+}
+
+/**
+ * Find an existing person in the list using smart name matching
+ */
+function findExistingPerson(name, peopleList) {
+  const nameLower = name.toLowerCase().trim();
+  const nameParts = nameLower.split(/\s+/);
+
+  for (const person of peopleList) {
+    const existingLower = person.name.toLowerCase().trim();
+    const existingParts = existingLower.split(/\s+/);
+
+    // Exact match
+    if (nameLower === existingLower) return person;
+
+    // Name is a single word (like "Altman") - check if it matches surname
+    if (nameParts.length === 1) {
+      if (existingParts[existingParts.length - 1] === nameParts[0]) return person;
+      if (existingParts.includes(nameParts[0])) return person;
+    }
+
+    // Existing is a single word - check if new name contains it
+    if (existingParts.length === 1) {
+      if (nameParts[nameParts.length - 1] === existingParts[0]) return person;
+      if (nameParts.includes(existingParts[0])) return person;
+    }
+
+    // One contains the other
+    if (nameLower.includes(existingLower) || existingLower.includes(nameLower)) {
+      return person;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -270,29 +314,62 @@ function extractPeopleFromMarket(market, topN) {
   const endDate = market.endDate || market.end_date_iso || null;
 
   const people = [];
-  const seenNames = new Set();
 
-  // Extract from outcomes
+  // Extract from outcomes FIRST (these are authoritative - actual nominees)
   const outcomeNames = extractFromOutcomes(market, topN);
   for (const { name, probability } of outcomeNames) {
-    const normalized = name.toLowerCase();
-    if (!seenNames.has(normalized)) {
-      seenNames.add(normalized);
+    if (!isDuplicatePerson(name, people)) {
       people.push({ name, probability, source: 'outcome' });
     }
   }
 
-  // Extract from title
+  // Extract from title - but skip if already covered by an outcome
   const titleNames = extractNamesFromText(title);
   for (const name of titleNames) {
-    const normalized = name.toLowerCase();
-    if (!seenNames.has(normalized)) {
-      seenNames.add(normalized);
+    if (!isDuplicatePerson(name, people)) {
       people.push({ name, probability: null, source: 'title' });
     }
   }
 
   return { title, slug, conditionId, volume, endDate, people };
+}
+
+/**
+ * Check if a name is a duplicate of someone already in the list
+ * Handles cases like "Altman" matching "Sam Altman"
+ */
+function isDuplicatePerson(newName, existingPeople) {
+  const newLower = newName.toLowerCase().trim();
+  const newParts = newLower.split(/\s+/);
+
+  for (const person of existingPeople) {
+    const existingLower = person.name.toLowerCase().trim();
+    const existingParts = existingLower.split(/\s+/);
+
+    // Exact match
+    if (newLower === existingLower) return true;
+
+    // New name is a single word (like "Altman") - check if it's a surname in existing
+    if (newParts.length === 1) {
+      // Check if it's the last part (surname) of an existing name
+      if (existingParts[existingParts.length - 1] === newParts[0]) return true;
+      // Also check if existing contains this word
+      if (existingParts.includes(newParts[0])) return true;
+    }
+
+    // Existing is a single word - check if new name contains it as surname
+    if (existingParts.length === 1) {
+      if (newParts[newParts.length - 1] === existingParts[0]) return true;
+      if (newParts.includes(existingParts[0])) return true;
+    }
+
+    // Check if one contains the other
+    if (newLower.includes(existingLower) || existingLower.includes(newLower)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function extractFromOutcomes(market, topN) {
