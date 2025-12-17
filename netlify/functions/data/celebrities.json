@@ -1,0 +1,477 @@
+{
+  "_metadata": {
+    "description": "Pre-computed birth dates for frequently appearing public figures",
+    "lastUpdated": "2025-01-15",
+    "source": "Wikipedia"
+  },
+  "celebrities": {
+    "donald trump": {
+      "birthDate": "June 14, 1946",
+      "birthDateRaw": "1946-06-14",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Donald_Trump",
+      "confidence": 100
+    },
+    "joe biden": {
+      "birthDate": "November 20, 1942",
+      "birthDateRaw": "1942-11-20",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Joe_Biden",
+      "confidence": 100
+    },
+    "kamala harris": {
+      "birthDate": "October 20, 1964",
+      "birthDateRaw": "1964-10-20",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Kamala_Harris",
+      "confidence": 100
+    },
+    "barack obama": {
+      "birthDate": "August 4, 1961",
+      "birthDateRaw": "1961-08-04",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Barack_Obama",
+      "confidence": 100
+    },
+    "elon musk": {
+      "birthDate": "June 28, 1971",
+      "birthDateRaw": "1971-06-28",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Elon_Musk",
+      "confidence": 100
+    },
+    "vladimir putin": {
+      "birthDate": "October 7, 1952",
+      "birthDateRaw": "1952-10-07",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Vladimir_Putin",
+      "confidence": 100
+    },
+    "volodymyr zelensky": {
+      "birthDate": "January 25, 1978",
+      "birthDateRaw": "1978-01-25",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Volodymyr_Zelensky",
+      "confidence": 100
+    },
+    "xi jinping": {
+      "birthDate": "June 15, 1953",
+      "birthDateRaw": "1953-06-15",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Xi_Jinping",
+      "confidence": 100
+    },
+    "benjamin netanyahu": {
+      "birthDate": "October 21, 1949",
+      "birthDateRaw": "1949-10-21",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Benjamin_Netanyahu",
+      "confidence": 100
+    },
+    "narendra modi": {
+      "birthDate": "September 17, 1950",
+      "birthDateRaw": "1950-09-17",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Narendra_Modi",
+      "confidence": 100
+    },
+    "emmanuel macron": {
+      "birthDate": "December 21, 1977",
+      "birthDateRaw": "1977-12-21",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Emmanuel_Macron",
+      "confidence": 100
+    },
+    "olaf scholz": {
+      "birthDate": "June 14, 1958",
+      "birthDateRaw": "1958-06-14",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Olaf_Scholz",
+      "confidence": 100
+    },
+    "rishi sunak": {
+      "birthDate": "May 12, 1980",
+      "birthDateRaw": "1980-05-12",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Rishi_Sunak",
+      "confidence": 100
+    },
+    "keir starmer": {
+      "birthDate": "September 2, 1962",
+      "birthDateRaw": "1962-09-02",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Keir_Starmer",
+      "confidence": 100
+    },
+    "sam altman": {
+      "birthDate": "April 22, 1985",
+      "birthDateRaw": "1985-04-22",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Sam_Altman",
+      "confidence": 100
+    },
+    "jeff bezos": {
+      "birthDate": "January 12, 1964",
+      "birthDateRaw": "1964-01-12",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Jeff_Bezos",
+      "confidence": 100
+    },
+    "mark zuckerberg": {
+      "birthDate": "May 14, 1984",
+      "birthDateRaw": "1984-05-14",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Mark_Zuckerberg",
+      "confidence": 100
+    },
+    "tim cook": {
+      "birthDate": "November 1, 1960",
+      "birthDateRaw": "1960-11-01",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Tim_Cook",
+      "confidence": 100
+    },
+    "sundar pichai": {
+      "birthDate": "June 10, 1972",
+      "birthDateRaw": "1972-06-10",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Sundar_Pichai",
+      "confidence": 100
+    },
+    "satya nadella": {
+      "birthDate": "August 19, 1967",
+      "birthDateRaw": "1967-08-19",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Satya_Nadella",
+      "confidence": 100
+    },
+    "jensen huang": {
+      "birthDate": "February 17, 1963",
+      "birthDateRaw": "1963-02-17",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Jensen_Huang",
+      "confidence": 100
+    },
+    "ron desantis": {
+      "birthDate": "September 14, 1978",
+      "birthDateRaw": "1978-09-14",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Ron_DeSantis",
+      "confidence": 100
+    },
+    "gavin newsom": {
+      "birthDate": "October 10, 1967",
+      "birthDateRaw": "1967-10-10",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Gavin_Newsom",
+      "confidence": 100
+    },
+    "nikki haley": {
+      "birthDate": "January 20, 1972",
+      "birthDateRaw": "1972-01-20",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Nikki_Haley",
+      "confidence": 100
+    },
+    "vivek ramaswamy": {
+      "birthDate": "August 9, 1985",
+      "birthDateRaw": "1985-08-09",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Vivek_Ramaswamy",
+      "confidence": 100
+    },
+    "jd vance": {
+      "birthDate": "August 2, 1984",
+      "birthDateRaw": "1984-08-02",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/J._D._Vance",
+      "confidence": 100
+    },
+    "nancy pelosi": {
+      "birthDate": "March 26, 1940",
+      "birthDateRaw": "1940-03-26",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Nancy_Pelosi",
+      "confidence": 100
+    },
+    "mitch mcconnell": {
+      "birthDate": "February 20, 1942",
+      "birthDateRaw": "1942-02-20",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Mitch_McConnell",
+      "confidence": 100
+    },
+    "chuck schumer": {
+      "birthDate": "November 23, 1950",
+      "birthDateRaw": "1950-11-23",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Chuck_Schumer",
+      "confidence": 100
+    },
+    "alexandria ocasio-cortez": {
+      "birthDate": "October 13, 1989",
+      "birthDateRaw": "1989-10-13",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Alexandria_Ocasio-Cortez",
+      "confidence": 100
+    },
+    "taylor swift": {
+      "birthDate": "December 13, 1989",
+      "birthDateRaw": "1989-12-13",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Taylor_Swift",
+      "confidence": 100
+    },
+    "beyoncé": {
+      "birthDate": "September 4, 1981",
+      "birthDateRaw": "1981-09-04",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Beyonc%C3%A9",
+      "confidence": 100
+    },
+    "drake": {
+      "birthDate": "October 24, 1986",
+      "birthDateRaw": "1986-10-24",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Drake_(musician)",
+      "confidence": 100
+    },
+    "kanye west": {
+      "birthDate": "June 8, 1977",
+      "birthDateRaw": "1977-06-08",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Kanye_West",
+      "confidence": 100
+    },
+    "joe rogan": {
+      "birthDate": "August 11, 1967",
+      "birthDateRaw": "1967-08-11",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Joe_Rogan",
+      "confidence": 100
+    },
+    "tucker carlson": {
+      "birthDate": "May 16, 1969",
+      "birthDateRaw": "1969-05-16",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Tucker_Carlson",
+      "confidence": 100
+    },
+    "pope francis": {
+      "birthDate": "December 17, 1936",
+      "birthDateRaw": "1936-12-17",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Pope_Francis",
+      "confidence": 100
+    },
+    "king charles iii": {
+      "birthDate": "November 14, 1948",
+      "birthDateRaw": "1948-11-14",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Charles_III",
+      "confidence": 100
+    },
+    "prince harry": {
+      "birthDate": "September 15, 1984",
+      "birthDateRaw": "1984-09-15",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Prince_Harry,_Duke_of_Sussex",
+      "confidence": 100
+    },
+    "meghan markle": {
+      "birthDate": "August 4, 1981",
+      "birthDateRaw": "1981-08-04",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Meghan,_Duchess_of_Sussex",
+      "confidence": 100
+    },
+    "warren buffett": {
+      "birthDate": "August 30, 1930",
+      "birthDateRaw": "1930-08-30",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Warren_Buffett",
+      "confidence": 100
+    },
+    "bill gates": {
+      "birthDate": "October 28, 1955",
+      "birthDateRaw": "1955-10-28",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Bill_Gates",
+      "confidence": 100
+    },
+    "javier milei": {
+      "birthDate": "October 22, 1970",
+      "birthDateRaw": "1970-10-22",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Javier_Milei",
+      "confidence": 100
+    },
+    "recep tayyip erdogan": {
+      "birthDate": "February 26, 1954",
+      "birthDateRaw": "1954-02-26",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Recep_Tayyip_Erdo%C4%9Fan",
+      "confidence": 100
+    },
+    "bashar al-assad": {
+      "birthDate": "September 11, 1965",
+      "birthDateRaw": "1965-09-11",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Bashar_al-Assad",
+      "confidence": 100
+    },
+    "kim jong un": {
+      "birthDate": "January 8, 1984",
+      "birthDateRaw": "1984-01-08",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Kim_Jong_Un",
+      "confidence": 80
+    },
+    "lula da silva": {
+      "birthDate": "October 27, 1945",
+      "birthDateRaw": "1945-10-27",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Luiz_In%C3%A1cio_Lula_da_Silva",
+      "confidence": 100
+    },
+    "jerome powell": {
+      "birthDate": "February 4, 1953",
+      "birthDateRaw": "1953-02-04",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Jerome_Powell",
+      "confidence": 100
+    },
+    "janet yellen": {
+      "birthDate": "August 13, 1946",
+      "birthDateRaw": "1946-08-13",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Janet_Yellen",
+      "confidence": 100
+    },
+    "jamie dimon": {
+      "birthDate": "March 13, 1956",
+      "birthDateRaw": "1956-03-13",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Jamie_Dimon",
+      "confidence": 100
+    },
+    "larry fink": {
+      "birthDate": "November 2, 1952",
+      "birthDateRaw": "1952-11-02",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Larry_Fink",
+      "confidence": 100
+    },
+    "cathie wood": {
+      "birthDate": "November 26, 1955",
+      "birthDateRaw": "1955-11-26",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Cathie_Wood",
+      "confidence": 100
+    },
+    "michael saylor": {
+      "birthDate": "February 4, 1965",
+      "birthDateRaw": "1965-02-04",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Michael_Saylor",
+      "confidence": 100
+    },
+    "vitalik buterin": {
+      "birthDate": "January 31, 1994",
+      "birthDateRaw": "1994-01-31",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Vitalik_Buterin",
+      "confidence": 100
+    },
+    "changpeng zhao": {
+      "birthDate": "September 10, 1977",
+      "birthDateRaw": "1977-09-10",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Changpeng_Zhao",
+      "confidence": 100
+    },
+    "brian armstrong": {
+      "birthDate": "January 25, 1983",
+      "birthDateRaw": "1983-01-25",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Brian_Armstrong_(businessman)",
+      "confidence": 100
+    },
+    "dario amodei": {
+      "birthDate": "1983",
+      "birthDateRaw": "1983",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Dario_Amodei",
+      "confidence": 60
+    },
+    "demis hassabis": {
+      "birthDate": "July 27, 1976",
+      "birthDateRaw": "1976-07-27",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Demis_Hassabis",
+      "confidence": 100
+    },
+    "ilya sutskever": {
+      "birthDate": "1985",
+      "birthDateRaw": "1985",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Ilya_Sutskever",
+      "confidence": 60
+    },
+    "andrej karpathy": {
+      "birthDate": "October 23, 1986",
+      "birthDateRaw": "1986-10-23",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Andrej_Karpathy",
+      "confidence": 100
+    },
+    "yann lecun": {
+      "birthDate": "July 8, 1960",
+      "birthDateRaw": "1960-07-08",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Yann_LeCun",
+      "confidence": 100
+    },
+    "geoffrey hinton": {
+      "birthDate": "December 6, 1947",
+      "birthDateRaw": "1947-12-06",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Geoffrey_Hinton",
+      "confidence": 100
+    },
+    "lionel messi": {
+      "birthDate": "June 24, 1987",
+      "birthDateRaw": "1987-06-24",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Lionel_Messi",
+      "confidence": 100
+    },
+    "cristiano ronaldo": {
+      "birthDate": "February 5, 1985",
+      "birthDateRaw": "1985-02-05",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Cristiano_Ronaldo",
+      "confidence": 100
+    },
+    "lebron james": {
+      "birthDate": "December 30, 1984",
+      "birthDateRaw": "1984-12-30",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/LeBron_James",
+      "confidence": 100
+    },
+    "tom brady": {
+      "birthDate": "August 3, 1977",
+      "birthDateRaw": "1977-08-03",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Tom_Brady",
+      "confidence": 100
+    },
+    "patrick mahomes": {
+      "birthDate": "September 17, 1995",
+      "birthDateRaw": "1995-09-17",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Patrick_Mahomes",
+      "confidence": 100
+    },
+    "travis kelce": {
+      "birthDate": "October 5, 1989",
+      "birthDateRaw": "1989-10-05",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Travis_Kelce",
+      "confidence": 100
+    },
+    "shohei ohtani": {
+      "birthDate": "July 5, 1994",
+      "birthDateRaw": "1994-07-05",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Shohei_Ohtani",
+      "confidence": 100
+    },
+    "serena williams": {
+      "birthDate": "September 26, 1981",
+      "birthDateRaw": "1981-09-26",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Serena_Williams",
+      "confidence": 100
+    },
+    "novak djokovic": {
+      "birthDate": "May 22, 1987",
+      "birthDateRaw": "1987-05-22",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Novak_Djokovic",
+      "confidence": 100
+    },
+    "greta thunberg": {
+      "birthDate": "January 3, 2003",
+      "birthDateRaw": "2003-01-03",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Greta_Thunberg",
+      "confidence": 100
+    },
+    "robert f kennedy jr": {
+      "birthDate": "January 17, 1954",
+      "birthDateRaw": "1954-01-17",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Robert_F._Kennedy_Jr.",
+      "confidence": 100
+    },
+    "pete buttigieg": {
+      "birthDate": "January 19, 1982",
+      "birthDateRaw": "1982-01-19",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Pete_Buttigieg",
+      "confidence": 100
+    },
+    "josh shapiro": {
+      "birthDate": "June 20, 1973",
+      "birthDateRaw": "1973-06-20",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Josh_Shapiro",
+      "confidence": 100
+    },
+    "gretchen whitmer": {
+      "birthDate": "August 23, 1971",
+      "birthDateRaw": "1971-08-23",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Gretchen_Whitmer",
+      "confidence": 100
+    },
+    "andy beshear": {
+      "birthDate": "November 29, 1977",
+      "birthDateRaw": "1977-11-29",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Andy_Beshear",
+      "confidence": 100
+    },
+    "mike pence": {
+      "birthDate": "June 7, 1959",
+      "birthDateRaw": "1959-06-07",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Mike_Pence",
+      "confidence": 100
+    }
+  }
+}

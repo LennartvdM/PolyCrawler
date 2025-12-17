@@ -1,9 +1,10 @@
-// PolyCrawler Frontend Application
+// PolyCrawler Frontend Application - Optimized
 
 let crawlResults = [];
 let filteredResults = [];
 let crawlLogs = [];
 let currentSort = { field: null, direction: 'asc' };
+let lastCrawlTime = null; // For incremental crawls
 
 // DOM Elements
 const elements = {
@@ -56,8 +57,8 @@ const appsScriptCode = `function doPost(e) {
 
   // Set headers if sheet is empty
   if (sheet.getLastRow() === 0) {
-    const headers = ['Person Name', 'Birth Date', 'Probability',
-                     'Market Title', 'Market Deadline', 'Market Volume', 'Status', 'Wikipedia URL', 'Updated'];
+    const headers = ['Person Name', 'Birth Date', 'Confidence', 'Probability',
+                     'Market Title', 'Market Deadline', 'Market Volume', 'Status', 'Source', 'Wikipedia URL', 'Updated'];
     sheet.appendRow(headers);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
   }
@@ -67,11 +68,13 @@ const appsScriptCode = `function doPost(e) {
     sheet.appendRow([
       row.personName,
       row.birthDate || 'N/A',
+      row.confidence ? row.confidence + '%' : 'N/A',
       (row.probability || 0).toFixed(1) + '%',
       row.marketTitle,
       row.marketEndDate || 'N/A',
       '$' + (row.marketVolume || 0).toLocaleString(),
       row.status,
+      row.source || 'unknown',
       row.wikipediaUrl || 'N/A',
       new Date().toISOString()
     ]);
@@ -96,6 +99,9 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.sheetsWebAppUrl.value = savedUrl;
     elements.exportToSheets.disabled = false;
   }
+
+  // Load last crawl time for incremental
+  lastCrawlTime = localStorage.getItem('lastCrawlTime');
 
   setupEventListeners();
 });
@@ -191,7 +197,7 @@ function setupEventListeners() {
 async function runCrawl() {
   const limit = parseInt(elements.marketLimit.value) || 50;
   const top = parseInt(elements.topContenders.value) || 4;
-  const BATCH_SIZE = 5; // Look up 5 people per request
+  const DEFAULT_BATCH_SIZE = 5;
 
   // Update UI
   elements.runCrawl.disabled = true;
@@ -205,10 +211,11 @@ async function runCrawl() {
   crawlResults = [];
   filteredResults = [];
   crawlLogs = [];
-  const wikiResults = new Map(); // nameKey -> wiki result
-  let peopleData = []; // Store people with their market associations
+  const wikiResults = new Map();
+  let peopleData = [];
+  let cacheStats = { hits: 0, fetches: 0 };
 
-  addLocalLog('INFO', 'Starting chunked crawl...', { limit, top });
+  addLocalLog('INFO', 'Starting optimized crawl...', { limit, top });
   renderLogs();
   renderResults();
 
@@ -231,10 +238,13 @@ async function runCrawl() {
 
     peopleData = marketsData.people || [];
     const totalPeople = peopleData.length;
+    const cacheHints = marketsData.cacheHints || {};
 
     addLocalLog('INFO', 'Markets fetched', {
       markets: marketsData.markets?.length || 0,
-      uniquePeople: totalPeople
+      uniquePeople: totalPeople,
+      cachedCount: cacheHints.cachedCount || 0,
+      suggestedBatchSize: cacheHints.suggestedBatchSize || DEFAULT_BATCH_SIZE
     });
 
     if (totalPeople === 0) {
@@ -242,14 +252,15 @@ async function runCrawl() {
       return;
     }
 
-    // Phase 2: Look up people in batches, showing results progressively
+    // Phase 2: Look up people in batches with smart sizing
     const names = peopleData.map(p => p.name);
     let lookedUp = 0;
+    const batchSize = cacheHints.suggestedBatchSize || DEFAULT_BATCH_SIZE;
 
-    for (let i = 0; i < names.length; i += BATCH_SIZE) {
-      const batch = names.slice(i, i + BATCH_SIZE);
-      const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-      const totalBatches = Math.ceil(names.length / BATCH_SIZE);
+    for (let i = 0; i < names.length; i += batchSize) {
+      const batch = names.slice(i, i + batchSize);
+      const batchNum = Math.floor(i / batchSize) + 1;
+      const totalBatches = Math.ceil(names.length / batchSize);
 
       elements.emptyState.innerHTML = `<p>Looking up Wikipedia... (${lookedUp}/${totalPeople} people)</p>`;
       addLocalLog('INFO', `Looking up batch ${batchNum}/${totalBatches}`, { names: batch });
@@ -266,25 +277,39 @@ async function runCrawl() {
         if (lookupData.success && lookupData.results) {
           for (const result of lookupData.results) {
             wikiResults.set(result.name.toLowerCase(), result);
+
+            // Track cache stats
+            if (result.source === 'celebrity-db' || result.source === 'cache') {
+              cacheStats.hits++;
+            } else if (result.source === 'wikipedia') {
+              cacheStats.fetches++;
+            }
           }
           lookedUp += batch.length;
 
           // Rebuild and display results progressively
           rebuildResults(peopleData, wikiResults);
-          updateStatsFromResults();
+          updateStatsFromResults(cacheStats);
           renderResults();
         }
       } catch (batchError) {
         addLocalLog('WARN', `Batch ${batchNum} failed`, { error: batchError.message });
-        // Continue with next batch
       }
+    }
+
+    // Save last crawl time for incremental crawls
+    if (marketsData.lastFetchTime) {
+      localStorage.setItem('lastCrawlTime', marketsData.lastFetchTime);
+      lastCrawlTime = marketsData.lastFetchTime;
     }
 
     // Final update
     elements.emptyState.style.display = 'none';
     addLocalLog('INFO', 'Crawl completed', {
       totalPeople: crawlResults.length,
-      birthDatesFound: crawlResults.filter(r => r.birthDate).length
+      birthDatesFound: crawlResults.filter(r => r.birthDate).length,
+      cacheHits: cacheStats.hits,
+      wikiFetches: cacheStats.fetches
     });
 
   } catch (error) {
@@ -311,7 +336,7 @@ function rebuildResults(peopleData, wikiResults) {
       crawlResults.push({
         marketTitle: market.title,
         marketSlug: market.slug,
-        eventTitle: market.eventTitle, // Parent event title for grouping
+        eventTitle: market.eventTitle,
         marketConditionId: market.conditionId,
         marketVolume: market.volume,
         marketEndDate: market.endDate,
@@ -326,10 +351,8 @@ function rebuildResults(peopleData, wikiResults) {
   filteredResults = [...crawlResults];
 }
 
-function updateStatsFromResults() {
-  // Count unique events/markets (use eventTitle if available, else marketTitle)
+function updateStatsFromResults(cacheStats = null) {
   const uniqueMarkets = new Set(crawlResults.map(r => r.eventTitle || r.marketTitle)).size;
-  // Count unique people
   const uniquePeople = new Set(crawlResults.map(r => r.personName.toLowerCase())).size;
 
   updateStats({
@@ -337,7 +360,8 @@ function updateStatsFromResults() {
     totalContenders: uniquePeople,
     birthDatesFound: crawlResults.filter(r => r.birthDate).length,
     wikipediaNotFound: crawlResults.filter(r => r.status && r.status.includes('not found')).length,
-    birthDateMissing: crawlResults.filter(r => r.found && !r.birthDate).length
+    birthDateMissing: crawlResults.filter(r => r.found && !r.birthDate).length,
+    cacheHits: cacheStats?.hits || 0
   });
 }
 
@@ -381,7 +405,6 @@ function renderLogs() {
     `;
   }).join('');
 
-  // Scroll to bottom
   elements.logContent.scrollTop = elements.logContent.scrollHeight;
 }
 
@@ -394,7 +417,6 @@ function updateStats(stats) {
 }
 
 function renderResults() {
-  // Group results by market
   const marketGroups = groupByMarket(filteredResults);
 
   elements.resultsBody.innerHTML = marketGroups.map((group, idx) => {
@@ -402,16 +424,13 @@ function renderResults() {
     const market = group.market;
     const isMultiPerson = people.length > 1;
 
-    // Create header showing up to 3 names
     const displayNames = people.slice(0, 3).map(p => p.personName);
     const moreCount = people.length - 3;
     const namesHeader = displayNames.join(', ') + (moreCount > 0 ? ` +${moreCount} more` : '');
 
-    // Summary stats for the group
     const foundCount = people.filter(p => p.birthDate).length;
 
     if (isMultiPerson) {
-      // Collapsible multi-person market
       return `
         <tr class="market-header" data-market-idx="${idx}" onclick="toggleMarket(${idx})">
           <td class="expand-cell"><span class="expand-icon">▶</span></td>
@@ -426,15 +445,18 @@ function renderResults() {
             <td></td>
             <td class="person-name-cell">
               ${p.wikipediaUrl ? `<a href="${p.wikipediaUrl}" target="_blank">${escapeHtml(p.personName)}</a>` : escapeHtml(p.personName)}
+              ${getSourceBadge(p.source)}
             </td>
-            <td>${p.birthDate || '-'}</td>
+            <td>
+              ${p.birthDate || '-'}
+              ${p.confidence ? `<span class="confidence-badge confidence-${getConfidenceClass(p.confidence)}">${p.confidence}%</span>` : ''}
+            </td>
             <td class="probability">${p.probability ? p.probability.toFixed(1) + '%' : '-'}</td>
             <td colspan="2"><span class="status-badge ${getStatusClass(p.status)}">${p.status}</span></td>
           </tr>
         `).join('')}
       `;
     } else {
-      // Single person - simple row
       const p = people[0];
       return `
         <tr class="single-person-row">
@@ -443,8 +465,12 @@ function renderResults() {
             <strong>
               ${p.wikipediaUrl ? `<a href="${p.wikipediaUrl}" target="_blank">${escapeHtml(p.personName)}</a>` : escapeHtml(p.personName)}
             </strong>
+            ${getSourceBadge(p.source)}
           </td>
-          <td>${p.birthDate || '-'}</td>
+          <td>
+            ${p.birthDate || '-'}
+            ${p.confidence ? `<span class="confidence-badge confidence-${getConfidenceClass(p.confidence)}">${p.confidence}%</span>` : ''}
+          </td>
           <td class="market-title" title="${escapeHtml(market.title)}">${escapeHtml(market.title)}</td>
           <td>${formatDeadline(market.endDate)}</td>
           <td class="link-cell">
@@ -457,28 +483,44 @@ function renderResults() {
   }).join('');
 }
 
+function getSourceBadge(source) {
+  if (!source) return '';
+
+  const badges = {
+    'celebrity-db': '<span class="source-badge source-celeb" title="From celebrity database">DB</span>',
+    'cache': '<span class="source-badge source-cache" title="From cache">Cache</span>',
+    'wikipedia': '',
+    'wikipedia-error': '<span class="source-badge source-error" title="Wikipedia error">Err</span>'
+  };
+
+  return badges[source] || '';
+}
+
+function getConfidenceClass(confidence) {
+  if (confidence >= 90) return 'high';
+  if (confidence >= 60) return 'medium';
+  return 'low';
+}
+
 function groupByMarket(results) {
   const groups = new Map();
 
   for (const r of results) {
-    // Group by eventTitle when available (groups markets from same event together)
-    // Fall back to marketTitle for markets without a parent event
     const key = r.eventTitle || r.marketTitle;
     if (!groups.has(key)) {
       groups.set(key, {
         market: {
-          title: r.eventTitle || r.marketTitle, // Use event title for display when available
+          title: r.eventTitle || r.marketTitle,
           slug: r.marketSlug,
           conditionId: r.marketConditionId,
           volume: r.marketVolume,
           endDate: r.marketEndDate
         },
         people: [],
-        seenNames: new Set() // Track unique names within this group
+        seenNames: new Set()
       });
     }
 
-    // Deduplicate people within the same group
     const nameLower = r.personName.toLowerCase();
     const group = groups.get(key);
     if (!group.seenNames.has(nameLower)) {
@@ -487,7 +529,6 @@ function groupByMarket(results) {
     }
   }
 
-  // Remove the seenNames sets before returning
   return Array.from(groups.values()).map(g => ({
     market: g.market,
     people: g.people
@@ -504,7 +545,6 @@ function getMarketLinkFromGroup(market) {
   return '';
 }
 
-// Global function for onclick handler
 window.toggleMarket = function(idx) {
   const header = document.querySelector(`.market-header[data-market-idx="${idx}"]`);
   const rows = document.querySelectorAll(`.person-row[data-market-idx="${idx}"]`);
@@ -540,11 +580,9 @@ function getStatusClass(status) {
 }
 
 function getMarketLink(result) {
-  // Try slug first (for event URL)
   if (result.marketSlug) {
     return `<a href="https://polymarket.com/event/${encodeURIComponent(result.marketSlug)}" target="_blank">Market</a>`;
   }
-  // Fall back to conditionId (direct market URL)
   if (result.marketConditionId) {
     return `<a href="https://polymarket.com/market/${encodeURIComponent(result.marketConditionId)}" target="_blank">Market</a>`;
   }
@@ -556,7 +594,6 @@ function applyFilters() {
   const statusFilter = elements.filterStatus.value;
 
   filteredResults = crawlResults.filter(r => {
-    // Text filter
     if (searchText) {
       const matchesText =
         r.personName.toLowerCase().includes(searchText) ||
@@ -564,7 +601,6 @@ function applyFilters() {
       if (!matchesText) return false;
     }
 
-    // Status filter
     if (statusFilter !== 'all') {
       if (statusFilter === 'found' && r.status !== 'Found') return false;
       if (statusFilter === 'no-date' && !r.status.includes('Birth date not found')) return false;
@@ -578,7 +614,6 @@ function applyFilters() {
 }
 
 function sortResults(field) {
-  // Toggle direction
   if (currentSort.field === field) {
     currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
   } else {
@@ -586,7 +621,6 @@ function sortResults(field) {
     currentSort.direction = 'asc';
   }
 
-  // Update header classes
   document.querySelectorAll('th[data-sort]').forEach(th => {
     th.classList.remove('sort-asc', 'sort-desc');
     if (th.dataset.sort === field) {
@@ -594,16 +628,13 @@ function sortResults(field) {
     }
   });
 
-  // Sort
   filteredResults.sort((a, b) => {
     let aVal = a[field];
     let bVal = b[field];
 
-    // Handle null/undefined
     if (aVal == null) aVal = '';
     if (bVal == null) bVal = '';
 
-    // Compare
     let comparison = 0;
     if (typeof aVal === 'number' && typeof bVal === 'number') {
       comparison = aVal - bVal;
@@ -618,20 +649,22 @@ function sortResults(field) {
 }
 
 function exportToCsv() {
-  const headers = ['Person Name', 'Birth Date', 'Birth Date (Raw)', 'Probability %',
+  const headers = ['Person Name', 'Birth Date', 'Birth Date (Raw)', 'Confidence', 'Probability %',
                    'Event/Market Title', 'Market Title', 'Market Deadline', 'Market Volume',
-                   'Status', 'Wikipedia URL', 'Market URL'];
+                   'Status', 'Source', 'Wikipedia URL', 'Market URL'];
 
   const rows = filteredResults.map(r => [
     r.personName,
     r.birthDate || '',
     r.birthDateRaw || '',
+    r.confidence || '',
     r.probability?.toFixed(1) || '',
     r.eventTitle || r.marketTitle,
     r.marketTitle,
     r.marketEndDate || '',
     r.marketVolume || '',
     r.status,
+    r.source || '',
     r.wikipediaUrl || '',
     r.marketSlug ? `https://polymarket.com/event/${r.marketSlug}` : (r.marketConditionId ? `https://polymarket.com/market/${r.marketConditionId}` : '')
   ]);
@@ -650,7 +683,7 @@ function exportToCsv() {
 
 function copyToClipboard() {
   const text = filteredResults.map(r =>
-    `${r.personName}\t${r.birthDate || '-'}\t${r.probability?.toFixed(1) || '-'}%\t${r.eventTitle || r.marketTitle}\t${r.marketEndDate || '-'}`
+    `${r.personName}\t${r.birthDate || '-'}\t${r.confidence || '-'}%\t${r.probability?.toFixed(1) || '-'}%\t${r.eventTitle || r.marketTitle}\t${r.marketEndDate || '-'}`
   ).join('\n');
 
   navigator.clipboard.writeText(text).then(() => {
@@ -672,14 +705,13 @@ async function exportToSheets() {
   try {
     const response = await fetch(url, {
       method: 'POST',
-      mode: 'no-cors', // Google Apps Script doesn't support CORS properly
+      mode: 'no-cors',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ results: filteredResults })
     });
 
-    // With no-cors, we can't read the response, but if it didn't throw, it likely worked
     elements.sheetsStatus.textContent = 'Export sent! Check your Google Sheet.';
     elements.sheetsStatus.className = 'status-message success';
 
