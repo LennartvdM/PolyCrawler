@@ -2,6 +2,7 @@
 
 let crawlResults = [];
 let filteredResults = [];
+let crawlLogs = [];
 let currentSort = { field: null, direction: 'asc' };
 
 // DOM Elements
@@ -35,6 +36,13 @@ const elements = {
   statFound: document.getElementById('statFound'),
   statNoWiki: document.getElementById('statNoWiki'),
   statNoDate: document.getElementById('statNoDate'),
+  // Log panel
+  logPanel: document.getElementById('logPanel'),
+  logContent: document.getElementById('logContent'),
+  logLevelFilter: document.getElementById('logLevelFilter'),
+  toggleLogPanel: document.getElementById('toggleLogPanel'),
+  copyLogs: document.getElementById('copyLogs'),
+  clearLogs: document.getElementById('clearLogs'),
 };
 
 // Google Apps Script code for the modal
@@ -145,6 +153,41 @@ function setupEventListeners() {
       sortResults(field);
     });
   });
+
+  // Log panel controls
+  elements.logLevelFilter.addEventListener('change', renderLogs);
+
+  elements.toggleLogPanel.addEventListener('click', () => {
+    elements.logPanel.classList.toggle('collapsed');
+    elements.toggleLogPanel.textContent =
+      elements.logPanel.classList.contains('collapsed') ? 'Show' : 'Hide';
+  });
+
+  elements.copyLogs.addEventListener('click', () => {
+    const logText = crawlLogs.map(log =>
+      `[${log.timestamp}] [${log.level}] ${log.message}${log.data ? '\n  ' + JSON.stringify(log.data, null, 2) : ''}`
+    ).join('\n');
+
+    navigator.clipboard.writeText(logText).then(() => {
+      elements.copyLogs.textContent = 'Copied!';
+      setTimeout(() => {
+        elements.copyLogs.textContent = 'Copy Logs';
+      }, 2000);
+    });
+  });
+
+  elements.clearLogs.addEventListener('click', () => {
+    crawlLogs = [];
+    renderLogs();
+  });
+
+  // Log data expand/collapse
+  elements.logContent.addEventListener('click', (e) => {
+    if (e.target.classList.contains('log-data') || e.target.closest('.log-data')) {
+      const logData = e.target.classList.contains('log-data') ? e.target : e.target.closest('.log-data');
+      logData.classList.toggle('collapsed');
+    }
+  });
 }
 
 async function runCrawl() {
@@ -157,36 +200,120 @@ async function runCrawl() {
   elements.btnLoading.style.display = 'inline';
   elements.emptyState.innerHTML = '<p>Fetching markets and looking up birth dates...</p>';
 
+  // Clear previous logs and add start message
+  crawlLogs = [];
+  addLocalLog('INFO', 'Starting crawl...', { limit, top });
+  renderLogs();
+
   try {
+    addLocalLog('INFO', 'Sending request to /api/crawl');
+
     const response = await fetch(`/api/crawl?limit=${limit}&top=${top}`);
+    addLocalLog('INFO', 'Response received', { status: response.status, statusText: response.statusText });
+
     const data = await response.json();
 
+    // Merge server logs
+    if (data.logs && Array.isArray(data.logs)) {
+      crawlLogs = [...crawlLogs, ...data.logs];
+      renderLogs();
+    }
+
     if (!data.success) {
+      addLocalLog('ERROR', 'Crawl failed', { error: data.error });
       throw new Error(data.error || 'Crawl failed');
     }
 
-    crawlResults = data.results;
+    crawlResults = data.results || [];
     filteredResults = [...crawlResults];
 
+    addLocalLog('INFO', 'Crawl completed successfully', {
+      resultsCount: crawlResults.length,
+      stats: data.stats
+    });
+
     // Update stats
-    updateStats(data.stats);
+    if (data.stats) {
+      updateStats(data.stats);
+    } else {
+      updateStats({
+        totalMarkets: 0,
+        totalContenders: crawlResults.length,
+        birthDatesFound: crawlResults.filter(r => r.birthDate).length,
+        wikipediaNotFound: crawlResults.filter(r => !r.found).length,
+        birthDateMissing: crawlResults.filter(r => r.found && !r.birthDate).length
+      });
+    }
 
     // Show results
     renderResults();
 
     elements.stats.style.display = 'flex';
     elements.actions.style.display = 'flex';
-    elements.emptyState.style.display = 'none';
-    elements.tableContainer.style.display = 'block';
+
+    if (crawlResults.length > 0) {
+      elements.emptyState.style.display = 'none';
+      elements.tableContainer.style.display = 'block';
+    } else {
+      elements.emptyState.innerHTML = '<p style="color: var(--warning);">No person contenders found in the fetched markets. Check the logs below for details.</p>';
+      elements.emptyState.style.display = 'block';
+      elements.tableContainer.style.display = 'none';
+    }
 
   } catch (error) {
     console.error('Crawl error:', error);
-    elements.emptyState.innerHTML = `<p style="color: var(--danger);">Error: ${error.message}</p>`;
+    addLocalLog('ERROR', 'Client-side error', { message: error.message, stack: error.stack });
+    elements.emptyState.innerHTML = `<p style="color: var(--danger);">Error: ${error.message}</p><p style="color: var(--text-muted); margin-top: 0.5rem;">Check the logs below for more details.</p>`;
   } finally {
     elements.runCrawl.disabled = false;
     elements.btnText.style.display = 'inline';
     elements.btnLoading.style.display = 'none';
+    renderLogs();
   }
+}
+
+function addLocalLog(level, message, data = null) {
+  crawlLogs.push({
+    timestamp: new Date().toISOString(),
+    level,
+    message,
+    data,
+    isLocal: true
+  });
+}
+
+function renderLogs() {
+  const filterLevel = elements.logLevelFilter.value;
+
+  const filteredLogs = filterLevel === 'all'
+    ? crawlLogs
+    : crawlLogs.filter(log => log.level === filterLevel);
+
+  if (filteredLogs.length === 0) {
+    elements.logContent.innerHTML = '<div class="log-empty">No logs yet. Run a crawl to see detailed logs.</div>';
+    return;
+  }
+
+  elements.logContent.innerHTML = filteredLogs.map(log => {
+    const time = new Date(log.timestamp).toLocaleTimeString();
+    const dataHtml = log.data
+      ? `<div class="log-data collapsed">${escapeHtml(JSON.stringify(log.data, null, 2))}</div>`
+      : '';
+
+    return `
+      <div class="log-entry">
+        <span class="log-timestamp">${time}</span>
+        <span class="log-level ${log.level}">${log.level}</span>
+        <div class="log-message">
+          ${escapeHtml(log.message)}
+          ${dataHtml}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Scroll to bottom
+  elements.logContent.scrollTop = elements.logContent.scrollHeight;
 }
 
 function updateStats(stats) {
