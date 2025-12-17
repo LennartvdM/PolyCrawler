@@ -335,7 +335,7 @@ function renderResults() {
       <td><span class="status-badge ${getStatusClass(r.status)}">${r.status}</span></td>
       <td class="link-cell">
         ${r.wikipediaUrl ? `<a href="${r.wikipediaUrl}" target="_blank">Wikipedia</a>` : ''}
-        ${r.marketSlug ? `<a href="https://polymarket.com/event/${r.marketSlug}" target="_blank">Market</a>` : ''}
+        ${getMarketLink(r)}
       </td>
     </tr>
   `).join('');
@@ -345,6 +345,18 @@ function getStatusClass(status) {
   if (status === 'Found') return 'status-found';
   if (status.includes('Birth date not found')) return 'status-no-date';
   return 'status-no-wiki';
+}
+
+function getMarketLink(result) {
+  // Try slug first (for event URL)
+  if (result.marketSlug) {
+    return `<a href="https://polymarket.com/event/${encodeURIComponent(result.marketSlug)}" target="_blank">Market</a>`;
+  }
+  // Fall back to conditionId (direct market URL)
+  if (result.marketConditionId) {
+    return `<a href="https://polymarket.com/market/${encodeURIComponent(result.marketConditionId)}" target="_blank">Market</a>`;
+  }
+  return '';
 }
 
 function applyFilters() {
@@ -428,7 +440,7 @@ function sortResults(field) {
 function exportToCsv() {
   const headers = ['Person Name', 'Zodiac Sign', 'Zodiac Symbol', 'Birth Date', 'Birth Date (Raw)',
                    'Probability %', 'Market Title', 'Market Volume', 'Market End Date',
-                   'Status', 'Wikipedia URL'];
+                   'Status', 'Wikipedia URL', 'Market URL'];
 
   const rows = filteredResults.map(r => [
     r.personName,
@@ -441,7 +453,8 @@ function exportToCsv() {
     r.marketVolume || '',
     r.marketEndDate || '',
     r.status,
-    r.wikipediaUrl || ''
+    r.wikipediaUrl || '',
+    r.marketSlug ? `https://polymarket.com/event/${r.marketSlug}` : (r.marketConditionId ? `https://polymarket.com/market/${r.marketConditionId}` : '')
   ]);
 
   const csvContent = [

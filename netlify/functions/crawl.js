@@ -131,6 +131,7 @@ export default async (request, context) => {
               ...existingResult,
               marketTitle: market.title,
               marketSlug: market.slug,
+              marketConditionId: market.conditionId,
               marketVolume: market.volume,
               marketEndDate: market.endDate,
               probability: person.probability,
@@ -154,6 +155,7 @@ export default async (request, context) => {
         results.push({
           marketTitle: market.title,
           marketSlug: market.slug,
+          marketConditionId: market.conditionId,
           marketVolume: market.volume,
           marketEndDate: market.endDate,
           personName: person.name,
@@ -206,6 +208,7 @@ export default async (request, context) => {
 function extractPeopleFromMarket(market, topN, log) {
   const title = market.question || market.title || 'Unknown';
   const slug = market.slug || '';
+  const conditionId = market.conditionId || market.condition_id || '';
   const volume = parseFloat(market.volume || 0);
   const endDate = market.endDate || market.end_date_iso || null;
 
@@ -237,7 +240,7 @@ function extractPeopleFromMarket(market, topN, log) {
     skipReason = 'No person names found in title or outcomes';
   }
 
-  return { title, slug, volume, endDate, people, skipReason };
+  return { title, slug, conditionId, volume, endDate, people, skipReason };
 }
 
 /**
