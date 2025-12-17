@@ -1,6 +1,7 @@
 /**
- * Netlify Function: Full crawl - fetch markets and lookup all Wikipedia birth dates
- * Extracts person names from BOTH market titles AND outcomes
+ * Netlify Function: Chunked crawl - supports progressive loading
+ * Phase 1: Fetch markets and extract people (returns list to look up)
+ * Phase 2: Look up batch of people on Wikipedia
  */
 
 export default async (request, context) => {
@@ -17,203 +18,127 @@ export default async (request, context) => {
   };
 
   const url = new URL(request.url);
+  const phase = url.searchParams.get('phase') || 'full';
   const limit = parseInt(url.searchParams.get('limit')) || 50;
   const topN = parseInt(url.searchParams.get('top')) || 4;
-  const maxLookups = 20; // Limit Wikipedia lookups to avoid timeout
-
-  log('INFO', 'Crawl started', { limit, topN });
 
   try {
-    // Fetch markets from multiple sources
-    const allMarkets = [];
+    // Phase 1: Fetch markets and extract people
+    if (phase === 'markets') {
+      log('INFO', 'Phase 1: Fetching markets', { limit, topN });
+      const { markets, people, logs: marketLogs } = await fetchMarketsAndPeople(limit, topN, log);
 
-    // Strategy 1: Fetch from events endpoint
-    log('INFO', 'Fetching events from Polymarket API');
-    try {
-      const eventsUrl = `https://gamma-api.polymarket.com/events?limit=${limit}&active=true&closed=false`;
-      const eventsResponse = await fetch(eventsUrl, {
-        headers: { 'User-Agent': 'PolyCrawler/1.0' }
+      return new Response(JSON.stringify({
+        success: true,
+        phase: 'markets',
+        markets,
+        people, // Array of { name, nameKey, markets: [...] }
+        logs
+      }), {
+        headers: { 'Content-Type': 'application/json' }
       });
-
-      if (eventsResponse.ok) {
-        const events = await eventsResponse.json();
-        log('INFO', 'Events fetched', { count: events.length });
-
-        for (const event of events) {
-          if (event.markets && Array.isArray(event.markets)) {
-            for (const market of event.markets) {
-              market._source = 'events';
-              allMarkets.push(market);
-            }
-          }
-        }
-        log('INFO', 'Markets extracted from events', { count: allMarkets.length });
-      }
-    } catch (e) {
-      log('WARN', 'Events fetch failed, continuing with markets endpoint', { error: e.message });
     }
 
-    // Strategy 2: Fetch regular markets endpoint
-    log('INFO', 'Fetching markets from Polymarket API');
-    const apiUrl = `https://gamma-api.polymarket.com/markets?limit=${Math.max(limit, 200)}&active=true&closed=false`;
-
-    const marketResponse = await fetch(apiUrl, {
-      headers: { 'User-Agent': 'PolyCrawler/1.0' }
-    });
-
-    log('INFO', 'Polymarket API response received', {
-      status: marketResponse.status,
-      statusText: marketResponse.statusText
-    });
-
-    if (!marketResponse.ok) {
-      const errorText = await marketResponse.text();
-      log('ERROR', 'Polymarket API error', { status: marketResponse.status, body: errorText.substring(0, 500) });
-      throw new Error(`Polymarket API error: ${marketResponse.status} - ${errorText.substring(0, 200)}`);
-    }
-
-    const rawMarkets = await marketResponse.json();
-    log('INFO', 'Markets fetched successfully', { totalMarkets: rawMarkets.length });
-
-    // Add to allMarkets (avoiding duplicates by slug)
-    const existingSlugs = new Set(allMarkets.map(m => m.slug));
-    for (const market of rawMarkets) {
-      if (!existingSlugs.has(market.slug)) {
-        market._source = 'markets';
-        allMarkets.push(market);
-      }
-    }
-
-    log('INFO', 'Total unique markets to process', { count: allMarkets.length });
-
-    // Process ALL markets - extract names from both titles and outcomes
-    const markets = [];
-    const skippedMarkets = [];
-
-    for (const market of allMarkets) {
-      const processed = extractPeopleFromMarket(market, topN, log);
-      if (processed.people.length > 0) {
-        markets.push(processed);
-        log('DEBUG', 'Found market with people', {
-          title: processed.title.substring(0, 60),
-          people: processed.people.map(p => `${p.name} (${p.source})`)
-        });
-      } else {
-        skippedMarkets.push({
-          title: market.question || market.title || 'Unknown',
-          reason: processed.skipReason || 'No people found'
+    // Phase 2: Look up a batch of people on Wikipedia
+    if (phase === 'lookup') {
+      const namesParam = url.searchParams.get('names');
+      if (!namesParam) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Missing names parameter',
+          logs
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
         });
       }
+
+      const names = JSON.parse(namesParam);
+      log('INFO', 'Phase 2: Looking up people', { count: names.length, names });
+
+      const results = await Promise.all(
+        names.map(async (name) => {
+          const result = await lookupPerson(name, log);
+          return { name, ...result };
+        })
+      );
+
+      return new Response(JSON.stringify({
+        success: true,
+        phase: 'lookup',
+        results,
+        logs
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
-    log('INFO', 'Markets processed', {
-      marketsWithPeople: markets.length,
-      skippedMarkets: skippedMarkets.length,
-      skippedExamples: skippedMarkets.slice(0, 5)
-    });
-
-    // Step 2: Collect unique people to look up
-    const uniquePeople = new Map(); // name -> first occurrence info
-    const personMarketMap = []; // All person-market combinations
-
-    for (const market of markets) {
-      for (const person of market.people) {
-        const nameKey = person.name.toLowerCase();
-
-        personMarketMap.push({
-          nameKey,
-          name: person.name,
-          market,
-          probability: person.probability,
-          source: person.source
-        });
-
-        if (!uniquePeople.has(nameKey)) {
-          uniquePeople.set(nameKey, person.name);
-        }
-      }
-    }
-
-    log('INFO', 'Starting Wikipedia lookups', {
-      uniquePeople: uniquePeople.size,
-      totalOccurrences: personMarketMap.length,
-      maxLookups
-    });
+    // Full mode (legacy) - for backwards compatibility, but with limits
+    log('INFO', 'Full crawl mode', { limit, topN });
+    const { markets, people } = await fetchMarketsAndPeople(limit, topN, log);
 
     // Limit lookups to avoid timeout
-    const namesToLookup = Array.from(uniquePeople.entries()).slice(0, maxLookups);
+    const maxLookups = 15;
+    const namesToLookup = people.slice(0, maxLookups);
 
-    // Parallel Wikipedia lookups in batches of 5
+    log('INFO', 'Starting Wikipedia lookups', {
+      total: people.length,
+      looking_up: namesToLookup.length
+    });
+
+    // Parallel Wikipedia lookups
     const wikiResults = new Map();
     const batchSize = 5;
 
     for (let i = 0; i < namesToLookup.length; i += batchSize) {
       const batch = namesToLookup.slice(i, i + batchSize);
-      log('DEBUG', `Looking up batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(namesToLookup.length/batchSize)}`, {
-        names: batch.map(([_, name]) => name)
-      });
 
       const batchResults = await Promise.all(
-        batch.map(async ([nameKey, name]) => {
-          const result = await lookupPerson(name, log);
-          return { nameKey, name, result };
+        batch.map(async (person) => {
+          const result = await lookupPerson(person.name, log);
+          return { ...person, ...result };
         })
       );
 
-      for (const { nameKey, name, result } of batchResults) {
-        wikiResults.set(nameKey, { name, ...result });
+      for (const result of batchResults) {
+        wikiResults.set(result.nameKey, result);
       }
     }
 
     // Build final results
     const results = [];
-    for (const entry of personMarketMap) {
-      const wikiResult = wikiResults.get(entry.nameKey);
-
-      if (wikiResult) {
+    for (const person of people) {
+      const wikiResult = wikiResults.get(person.nameKey);
+      for (const market of person.markets) {
         results.push({
-          marketTitle: entry.market.title,
-          marketSlug: entry.market.slug,
-          marketConditionId: entry.market.conditionId,
-          marketVolume: entry.market.volume,
-          marketEndDate: entry.market.endDate,
-          personName: entry.name,
-          probability: entry.probability,
-          nameSource: entry.source,
-          ...wikiResult
-        });
-      } else {
-        // Person wasn't looked up (exceeded maxLookups)
-        results.push({
-          marketTitle: entry.market.title,
-          marketSlug: entry.market.slug,
-          marketConditionId: entry.market.conditionId,
-          marketVolume: entry.market.volume,
-          marketEndDate: entry.market.endDate,
-          personName: entry.name,
-          probability: entry.probability,
-          nameSource: entry.source,
-          found: false,
-          status: 'Skipped (limit reached)'
+          marketTitle: market.title,
+          marketSlug: market.slug,
+          marketConditionId: market.conditionId,
+          marketVolume: market.volume,
+          marketEndDate: market.endDate,
+          personName: person.name,
+          probability: market.probability,
+          nameSource: market.source,
+          ...(wikiResult || { found: false, status: 'Skipped (limit reached)' })
         });
       }
     }
 
-    // Calculate stats
     const stats = {
       totalMarkets: markets.length,
       totalPeople: results.length,
-      uniquePeople: uniquePeople.size,
+      uniquePeople: people.length,
       lookedUp: wikiResults.size,
       birthDatesFound: results.filter(r => r.birthDate).length,
       wikipediaNotFound: results.filter(r => !r.found).length,
       birthDateMissing: results.filter(r => r.found && !r.birthDate).length
     };
 
-    log('INFO', 'Crawl completed successfully', stats);
+    log('INFO', 'Crawl completed', stats);
 
     return new Response(JSON.stringify({
       success: true,
+      phase: 'full',
       stats,
       results,
       logs,
@@ -237,11 +162,109 @@ export default async (request, context) => {
 };
 
 /**
+ * Fetch markets and extract unique people
+ */
+async function fetchMarketsAndPeople(limit, topN, log) {
+  const allMarkets = [];
+
+  // Fetch from events endpoint
+  log('INFO', 'Fetching events from Polymarket API');
+  try {
+    const eventsUrl = `https://gamma-api.polymarket.com/events?limit=${limit}&active=true&closed=false`;
+    const eventsResponse = await fetch(eventsUrl, {
+      headers: { 'User-Agent': 'PolyCrawler/1.0' }
+    });
+
+    if (eventsResponse.ok) {
+      const events = await eventsResponse.json();
+      log('INFO', 'Events fetched', { count: events.length });
+
+      for (const event of events) {
+        if (event.markets && Array.isArray(event.markets)) {
+          for (const market of event.markets) {
+            market._source = 'events';
+            market._eventSlug = event.slug; // Store parent event slug
+            allMarkets.push(market);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    log('WARN', 'Events fetch failed', { error: e.message });
+  }
+
+  // Fetch from markets endpoint
+  log('INFO', 'Fetching markets from Polymarket API');
+  const apiUrl = `https://gamma-api.polymarket.com/markets?limit=${Math.max(limit, 100)}&active=true&closed=false`;
+
+  const marketResponse = await fetch(apiUrl, {
+    headers: { 'User-Agent': 'PolyCrawler/1.0' }
+  });
+
+  if (!marketResponse.ok) {
+    throw new Error(`Polymarket API error: ${marketResponse.status}`);
+  }
+
+  const rawMarkets = await marketResponse.json();
+  log('INFO', 'Markets fetched', { count: rawMarkets.length });
+
+  // Dedupe by slug
+  const existingSlugs = new Set(allMarkets.map(m => m.slug));
+  for (const market of rawMarkets) {
+    if (!existingSlugs.has(market.slug)) {
+      market._source = 'markets';
+      allMarkets.push(market);
+    }
+  }
+
+  log('INFO', 'Total unique markets', { count: allMarkets.length });
+
+  // Extract people from markets
+  const markets = [];
+  const peopleMap = new Map(); // nameKey -> { name, markets: [...] }
+
+  for (const market of allMarkets) {
+    const processed = extractPeopleFromMarket(market, topN);
+    if (processed.people.length > 0) {
+      markets.push(processed);
+
+      for (const person of processed.people) {
+        const nameKey = person.name.toLowerCase();
+        if (!peopleMap.has(nameKey)) {
+          peopleMap.set(nameKey, {
+            name: person.name,
+            nameKey,
+            markets: []
+          });
+        }
+        peopleMap.get(nameKey).markets.push({
+          title: processed.title,
+          slug: processed.slug,
+          conditionId: processed.conditionId,
+          volume: processed.volume,
+          endDate: processed.endDate,
+          probability: person.probability,
+          source: person.source
+        });
+      }
+    }
+  }
+
+  const people = Array.from(peopleMap.values());
+  log('INFO', 'People extracted', {
+    marketsWithPeople: markets.length,
+    uniquePeople: people.length
+  });
+
+  return { markets, people };
+}
+
+/**
  * Extract people from a market - both from title AND outcomes
  */
-function extractPeopleFromMarket(market, topN, log) {
+function extractPeopleFromMarket(market, topN) {
   const title = market.question || market.title || 'Unknown';
-  const slug = market.slug || '';
+  const slug = market._eventSlug || market.slug || '';
   const conditionId = market.conditionId || market.condition_id || '';
   const volume = parseFloat(market.volume || 0);
   const endDate = market.endDate || market.end_date_iso || null;
@@ -249,7 +272,7 @@ function extractPeopleFromMarket(market, topN, log) {
   const people = [];
   const seenNames = new Set();
 
-  // Strategy 1: Extract names from outcomes (for multi-option markets)
+  // Extract from outcomes
   const outcomeNames = extractFromOutcomes(market, topN);
   for (const { name, probability } of outcomeNames) {
     const normalized = name.toLowerCase();
@@ -259,7 +282,7 @@ function extractPeopleFromMarket(market, topN, log) {
     }
   }
 
-  // Strategy 2: Extract names from market title/question
+  // Extract from title
   const titleNames = extractNamesFromText(title);
   for (const name of titleNames) {
     const normalized = name.toLowerCase();
@@ -269,17 +292,9 @@ function extractPeopleFromMarket(market, topN, log) {
     }
   }
 
-  let skipReason = null;
-  if (people.length === 0) {
-    skipReason = 'No person names found in title or outcomes';
-  }
-
-  return { title, slug, conditionId, volume, endDate, people, skipReason };
+  return { title, slug, conditionId, volume, endDate, people };
 }
 
-/**
- * Extract person names from market outcomes
- */
 function extractFromOutcomes(market, topN) {
   let outcomes = [];
 
@@ -309,21 +324,13 @@ function extractFromOutcomes(market, topN) {
     }
   }
 
-  // Sort by probability and take top N
   outcomes.sort((a, b) => b.probability - a.probability);
-  const topOutcomes = outcomes.slice(0, topN);
-
-  // Filter to only valid person names
-  return topOutcomes.filter(o => o.name && isPersonName(o.name));
+  return outcomes.slice(0, topN).filter(o => o.name && isPersonName(o.name));
 }
 
-/**
- * Extract potential person names from free text (market titles)
- */
 function extractNamesFromText(text) {
   const names = [];
 
-  // Known political/public figures - common in Polymarket
   const knownFigures = [
     'Trump', 'Biden', 'Obama', 'Putin', 'Xi Jinping', 'Zelensky', 'Macron', 'Scholz',
     'Netanyahu', 'Khamenei', 'Kim Jong Un', 'Modi', 'Erdogan', 'Lula', 'Milei',
@@ -334,7 +341,6 @@ function extractNamesFromText(text) {
     'Pelosi', 'McConnell', 'Schumer', 'AOC', 'MTG',
     'Pope Francis', 'King Charles', 'Prince Harry', 'Meghan Markle',
     'Andrew Tate', 'Jordan Peterson', 'Ben Shapiro',
-    // Add full names for better matching
     'Donald Trump', 'Joe Biden', 'Barack Obama', 'Vladimir Putin',
     'Volodymyr Zelensky', 'Emmanuel Macron', 'Olaf Scholz',
     'Benjamin Netanyahu', 'Ali Khamenei', 'Narendra Modi',
@@ -343,28 +349,21 @@ function extractNamesFromText(text) {
     'Sam Altman', 'Sam Bankman-Fried', 'Changpeng Zhao'
   ];
 
-  // Check for known figures (case-insensitive)
   for (const figure of knownFigures) {
     const regex = new RegExp(`\\b${escapeRegex(figure)}\\b`, 'i');
     if (regex.test(text)) {
-      // Use the canonical name form
       names.push(figure);
     }
   }
 
-  // Also try to find "Firstname Lastname" patterns
-  // Match sequences like "John Smith" - capitalized words
   const namePattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g;
   let match;
   while ((match = namePattern.exec(text)) !== null) {
-    const potentialName = match[1];
-    // Filter out common non-name phrases
-    if (isLikelyPersonName(potentialName)) {
-      names.push(potentialName);
+    if (isLikelyPersonName(match[1])) {
+      names.push(match[1]);
     }
   }
 
-  // Deduplicate (case-insensitive)
   const seen = new Set();
   return names.filter(name => {
     const lower = name.toLowerCase();
@@ -378,9 +377,6 @@ function escapeRegex(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/**
- * Check if a name from outcomes looks like a person name
- */
 function isPersonName(name) {
   const nonPersonTerms = new Set([
     'yes', 'no', 'other', 'none', 'neither', 'both',
@@ -391,15 +387,12 @@ function isPersonName(name) {
   ]);
 
   const nameLower = name.toLowerCase().trim();
-
   if (nonPersonTerms.has(nameLower)) return false;
   if (/^[\d,.\s%$€£]+$/.test(name)) return false;
   if (/^\d/.test(name)) return false;
 
-  // Must have at least 2 parts (first + last name) OR be a known single name
   const parts = name.split(/\s+/);
   if (parts.length < 2) {
-    // Allow known single-word names
     const knownSingleNames = ['trump', 'biden', 'putin', 'musk', 'bezos', 'zelensky', 'macron', 'ye', 'drake'];
     return knownSingleNames.includes(nameLower);
   }
@@ -407,9 +400,6 @@ function isPersonName(name) {
   return true;
 }
 
-/**
- * Check if extracted "Firstname Lastname" is likely a person (not a place/thing)
- */
 function isLikelyPersonName(name) {
   const nonPersonPhrases = [
     'united states', 'united kingdom', 'united nations', 'european union',
@@ -424,11 +414,7 @@ function isLikelyPersonName(name) {
     if (lower.includes(phrase)) return false;
   }
 
-  // Simple heuristic: most person names are 2-4 words
-  const words = name.split(/\s+/);
-  if (words.length > 4) return false;
-
-  return true;
+  return name.split(/\s+/).length <= 4;
 }
 
 async function lookupPerson(name, log) {
@@ -436,11 +422,10 @@ async function lookupPerson(name, log) {
     const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name)}&srlimit=5&format=json&origin=*`;
 
     const searchResponse = await fetch(searchUrl, {
-      headers: { 'User-Agent': 'PolyCrawler/1.0 (horoscope research)' }
+      headers: { 'User-Agent': 'PolyCrawler/1.0' }
     });
 
     if (!searchResponse.ok) {
-      log('WARN', 'Wikipedia search failed', { name, status: searchResponse.status });
       return { found: false, status: `Wikipedia search failed: ${searchResponse.status}` };
     }
 
@@ -448,11 +433,9 @@ async function lookupPerson(name, log) {
     const results = searchData.query?.search || [];
 
     if (results.length === 0) {
-      log('DEBUG', 'No Wikipedia results', { name });
       return { found: false, status: 'Wikipedia page not found' };
     }
 
-    // Find best match
     const nameLower = name.toLowerCase();
     let title = results[0].title;
     for (const result of results) {
@@ -462,17 +445,13 @@ async function lookupPerson(name, log) {
       }
     }
 
-    log('DEBUG', 'Wikipedia page found', { name, pageTitle: title });
-
-    // Get content
     const contentUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=revisions&rvprop=content&rvslots=main&format=json&origin=*`;
 
     const contentResponse = await fetch(contentUrl, {
-      headers: { 'User-Agent': 'PolyCrawler/1.0 (horoscope research)' }
+      headers: { 'User-Agent': 'PolyCrawler/1.0' }
     });
 
     if (!contentResponse.ok) {
-      log('WARN', 'Wikipedia content fetch failed', { name, title, status: contentResponse.status });
       return { found: false, status: 'Wikipedia fetch failed' };
     }
 
@@ -495,28 +474,23 @@ async function lookupPerson(name, log) {
     const birthInfo = extractBirthDate(wikitext);
 
     if (birthInfo) {
-      log('DEBUG', 'Birth date found', { name, birthDate: birthInfo.formatted });
       return {
         found: true,
         wikipediaUrl,
         birthDate: birthInfo.formatted,
         birthDateRaw: birthInfo.raw,
-        zodiacSign: getZodiacSign(birthInfo.raw),
         status: 'Found'
       };
     } else {
-      log('DEBUG', 'Wikipedia found but no birth date', { name, wikipediaUrl });
       return {
         found: true,
         wikipediaUrl,
         birthDate: null,
         birthDateRaw: null,
-        zodiacSign: null,
         status: 'Birth date not found on Wikipedia'
       };
     }
   } catch (error) {
-    log('ERROR', 'Wikipedia lookup error', { name, error: error.message });
     return { found: false, status: `Error: ${error.message}` };
   }
 }
@@ -570,47 +544,6 @@ function extractBirthDate(wikitext) {
   match = wikitext.match(/\{\{[Bb]irth year(?: and age)?\|(\d{4})/);
   if (match) {
     return { formatted: `${match[1]} (month/day unknown)`, raw: match[1] };
-  }
-
-  return null;
-}
-
-function getZodiacSign(dateStr) {
-  if (!dateStr || dateStr.length === 4) return null;
-
-  const [year, month, day] = dateStr.split('-').map(Number);
-  if (!month || !day) return null;
-
-  const signs = [
-    { name: 'Capricorn', symbol: '♑', start: [12, 22], end: [1, 19] },
-    { name: 'Aquarius', symbol: '♒', start: [1, 20], end: [2, 18] },
-    { name: 'Pisces', symbol: '♓', start: [2, 19], end: [3, 20] },
-    { name: 'Aries', symbol: '♈', start: [3, 21], end: [4, 19] },
-    { name: 'Taurus', symbol: '♉', start: [4, 20], end: [5, 20] },
-    { name: 'Gemini', symbol: '♊', start: [5, 21], end: [6, 20] },
-    { name: 'Cancer', symbol: '♋', start: [6, 21], end: [7, 22] },
-    { name: 'Leo', symbol: '♌', start: [7, 23], end: [8, 22] },
-    { name: 'Virgo', symbol: '♍', start: [8, 23], end: [9, 22] },
-    { name: 'Libra', symbol: '♎', start: [9, 23], end: [10, 22] },
-    { name: 'Scorpio', symbol: '♏', start: [10, 23], end: [11, 21] },
-    { name: 'Sagittarius', symbol: '♐', start: [11, 22], end: [12, 21] },
-  ];
-
-  for (const sign of signs) {
-    const [startMonth, startDay] = sign.start;
-    const [endMonth, endDay] = sign.end;
-
-    if (startMonth === 12 && endMonth === 1) {
-      if ((month === 12 && day >= startDay) || (month === 1 && day <= endDay)) {
-        return { name: sign.name, symbol: sign.symbol };
-      }
-    } else {
-      if ((month === startMonth && day >= startDay) ||
-          (month === endMonth && day <= endDay) ||
-          (month > startMonth && month < endMonth)) {
-        return { name: sign.name, symbol: sign.symbol };
-      }
-    }
   }
 
   return null;
