@@ -19,7 +19,6 @@ const elements = {
   resultsBody: document.getElementById('resultsBody'),
   filterInput: document.getElementById('filterInput'),
   filterStatus: document.getElementById('filterStatus'),
-  filterZodiac: document.getElementById('filterZodiac'),
   exportCsv: document.getElementById('exportCsv'),
   copyClipboard: document.getElementById('copyClipboard'),
   openSheetsConfig: document.getElementById('openSheetsConfig'),
@@ -57,8 +56,8 @@ const appsScriptCode = `function doPost(e) {
 
   // Set headers if sheet is empty
   if (sheet.getLastRow() === 0) {
-    const headers = ['Person Name', 'Zodiac Sign', 'Birth Date', 'Probability',
-                     'Market Title', 'Market Volume', 'Status', 'Wikipedia URL', 'Updated'];
+    const headers = ['Person Name', 'Birth Date', 'Probability',
+                     'Market Title', 'Market Deadline', 'Market Volume', 'Status', 'Wikipedia URL', 'Updated'];
     sheet.appendRow(headers);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
   }
@@ -67,10 +66,10 @@ const appsScriptCode = `function doPost(e) {
   for (const row of data.results) {
     sheet.appendRow([
       row.personName,
-      row.zodiacSign ? row.zodiacSign.symbol + ' ' + row.zodiacSign.name : 'N/A',
       row.birthDate || 'N/A',
       (row.probability || 0).toFixed(1) + '%',
       row.marketTitle,
+      row.marketEndDate || 'N/A',
       '$' + (row.marketVolume || 0).toLocaleString(),
       row.status,
       row.wikipediaUrl || 'N/A',
@@ -108,7 +107,6 @@ function setupEventListeners() {
   // Filters
   elements.filterInput.addEventListener('input', applyFilters);
   elements.filterStatus.addEventListener('change', applyFilters);
-  elements.filterZodiac.addEventListener('change', applyFilters);
 
   // Export
   elements.exportCsv.addEventListener('click', exportToCsv);
@@ -328,10 +326,10 @@ function renderResults() {
   elements.resultsBody.innerHTML = filteredResults.map(r => `
     <tr>
       <td><strong>${escapeHtml(r.personName)}</strong></td>
-      <td class="zodiac-cell">${r.zodiacSign ? `<span title="${r.zodiacSign.name}">${r.zodiacSign.symbol}</span>` : '-'}</td>
       <td>${r.birthDate || '-'}</td>
       <td class="probability">${r.probability ? r.probability.toFixed(1) + '%' : '-'}</td>
       <td class="market-title" title="${escapeHtml(r.marketTitle)}">${escapeHtml(r.marketTitle)}</td>
+      <td>${formatDeadline(r.marketEndDate)}</td>
       <td><span class="status-badge ${getStatusClass(r.status)}">${r.status}</span></td>
       <td class="link-cell">
         ${r.wikipediaUrl ? `<a href="${r.wikipediaUrl}" target="_blank">Wikipedia</a>` : ''}
@@ -339,6 +337,16 @@ function renderResults() {
       </td>
     </tr>
   `).join('');
+}
+
+function formatDeadline(dateStr) {
+  if (!dateStr) return '-';
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  } catch {
+    return dateStr;
+  }
 }
 
 function getStatusClass(status) {
@@ -362,7 +370,6 @@ function getMarketLink(result) {
 function applyFilters() {
   const searchText = elements.filterInput.value.toLowerCase();
   const statusFilter = elements.filterStatus.value;
-  const zodiacFilter = elements.filterZodiac.value;
 
   filteredResults = crawlResults.filter(r => {
     // Text filter
@@ -378,11 +385,6 @@ function applyFilters() {
       if (statusFilter === 'found' && r.status !== 'Found') return false;
       if (statusFilter === 'no-date' && !r.status.includes('Birth date not found')) return false;
       if (statusFilter === 'no-wiki' && r.found !== false) return false;
-    }
-
-    // Zodiac filter
-    if (zodiacFilter !== 'all') {
-      if (!r.zodiacSign || r.zodiacSign.name !== zodiacFilter) return false;
     }
 
     return true;
@@ -413,12 +415,6 @@ function sortResults(field) {
     let aVal = a[field];
     let bVal = b[field];
 
-    // Handle zodiac sign sorting
-    if (field === 'zodiacSign') {
-      aVal = a.zodiacSign?.name || '';
-      bVal = b.zodiacSign?.name || '';
-    }
-
     // Handle null/undefined
     if (aVal == null) aVal = '';
     if (bVal == null) bVal = '';
@@ -438,20 +434,18 @@ function sortResults(field) {
 }
 
 function exportToCsv() {
-  const headers = ['Person Name', 'Zodiac Sign', 'Zodiac Symbol', 'Birth Date', 'Birth Date (Raw)',
-                   'Probability %', 'Market Title', 'Market Volume', 'Market End Date',
+  const headers = ['Person Name', 'Birth Date', 'Birth Date (Raw)', 'Probability %',
+                   'Market Title', 'Market Deadline', 'Market Volume',
                    'Status', 'Wikipedia URL', 'Market URL'];
 
   const rows = filteredResults.map(r => [
     r.personName,
-    r.zodiacSign?.name || '',
-    r.zodiacSign?.symbol || '',
     r.birthDate || '',
     r.birthDateRaw || '',
     r.probability?.toFixed(1) || '',
     r.marketTitle,
-    r.marketVolume || '',
     r.marketEndDate || '',
+    r.marketVolume || '',
     r.status,
     r.wikipediaUrl || '',
     r.marketSlug ? `https://polymarket.com/event/${r.marketSlug}` : (r.marketConditionId ? `https://polymarket.com/market/${r.marketConditionId}` : '')
@@ -471,7 +465,7 @@ function exportToCsv() {
 
 function copyToClipboard() {
   const text = filteredResults.map(r =>
-    `${r.personName}\t${r.zodiacSign?.symbol || '-'} ${r.zodiacSign?.name || ''}\t${r.birthDate || '-'}\t${r.probability?.toFixed(1) || '-'}%\t${r.marketTitle}`
+    `${r.personName}\t${r.birthDate || '-'}\t${r.probability?.toFixed(1) || '-'}%\t${r.marketTitle}\t${r.marketEndDate || '-'}`
   ).join('\n');
 
   navigator.clipboard.writeText(text).then(() => {
