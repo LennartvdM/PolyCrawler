@@ -17,15 +17,45 @@ export default async (request, context) => {
   };
 
   const url = new URL(request.url);
-  const limit = parseInt(url.searchParams.get('limit')) || 50;
+  const limit = parseInt(url.searchParams.get('limit')) || 100;
   const topN = parseInt(url.searchParams.get('top')) || 4;
 
   log('INFO', 'Crawl started', { limit, topN });
 
   try {
-    // Step 1: Fetch markets
-    const apiUrl = `https://gamma-api.polymarket.com/markets?limit=${limit}&active=true&closed=false`;
-    log('INFO', 'Fetching markets from Polymarket API', { url: apiUrl });
+    // Fetch markets from multiple sources to find person-based markets
+    const allMarkets = [];
+
+    // Strategy 1: Fetch from events endpoint (grouped markets often have person contenders)
+    log('INFO', 'Fetching events from Polymarket API');
+    try {
+      const eventsUrl = `https://gamma-api.polymarket.com/events?limit=${limit}&active=true&closed=false`;
+      const eventsResponse = await fetch(eventsUrl, {
+        headers: { 'User-Agent': 'PolyCrawler/1.0' }
+      });
+
+      if (eventsResponse.ok) {
+        const events = await eventsResponse.json();
+        log('INFO', 'Events fetched', { count: events.length });
+
+        // Extract markets from events
+        for (const event of events) {
+          if (event.markets && Array.isArray(event.markets)) {
+            for (const market of event.markets) {
+              market._source = 'events';
+              allMarkets.push(market);
+            }
+          }
+        }
+        log('INFO', 'Markets extracted from events', { count: allMarkets.length });
+      }
+    } catch (e) {
+      log('WARN', 'Events fetch failed, continuing with markets endpoint', { error: e.message });
+    }
+
+    // Strategy 2: Fetch regular markets endpoint with higher limit
+    log('INFO', 'Fetching markets from Polymarket API');
+    const apiUrl = `https://gamma-api.polymarket.com/markets?limit=${Math.max(limit, 200)}&active=true&closed=false`;
 
     const marketResponse = await fetch(apiUrl, {
       headers: { 'User-Agent': 'PolyCrawler/1.0' }
@@ -33,8 +63,7 @@ export default async (request, context) => {
 
     log('INFO', 'Polymarket API response received', {
       status: marketResponse.status,
-      statusText: marketResponse.statusText,
-      headers: Object.fromEntries(marketResponse.headers.entries())
+      statusText: marketResponse.statusText
     });
 
     if (!marketResponse.ok) {
@@ -44,26 +73,56 @@ export default async (request, context) => {
     }
 
     const rawMarkets = await marketResponse.json();
-    log('INFO', 'Markets fetched successfully', {
-      totalMarkets: rawMarkets.length,
-      sampleMarket: rawMarkets[0] ? {
-        question: rawMarkets[0].question,
-        slug: rawMarkets[0].slug,
-        hasTokens: !!rawMarkets[0].tokens,
-        hasOutcomes: !!rawMarkets[0].outcomes,
-        tokenCount: rawMarkets[0].tokens?.length,
-        outcomeCount: rawMarkets[0].outcomes?.length
-      } : null
+    log('INFO', 'Markets fetched successfully', { totalMarkets: rawMarkets.length });
+
+    // Add to allMarkets (avoiding duplicates by slug)
+    const existingSlugs = new Set(allMarkets.map(m => m.slug));
+    for (const market of rawMarkets) {
+      if (!existingSlugs.has(market.slug)) {
+        market._source = 'markets';
+        allMarkets.push(market);
+      }
+    }
+
+    log('INFO', 'Total unique markets to process', { count: allMarkets.length });
+
+    // Pre-filter: Only consider markets with >2 outcomes (multi-option = likely person-based)
+    const multiOptionMarkets = allMarkets.filter(market => {
+      let outcomeCount = 0;
+
+      if (market.tokens && Array.isArray(market.tokens)) {
+        outcomeCount = market.tokens.length;
+      } else if (market.outcomes) {
+        let outcomes = market.outcomes;
+        if (typeof outcomes === 'string') {
+          try { outcomes = JSON.parse(outcomes); } catch { outcomes = []; }
+        }
+        outcomeCount = Array.isArray(outcomes) ? outcomes.length : 0;
+      }
+
+      return outcomeCount > 2;
+    });
+
+    log('INFO', 'Multi-option markets (>2 outcomes)', {
+      count: multiOptionMarkets.length,
+      examples: multiOptionMarkets.slice(0, 5).map(m => ({
+        question: m.question || m.title,
+        outcomeCount: m.tokens?.length || (typeof m.outcomes === 'string' ? JSON.parse(m.outcomes || '[]').length : m.outcomes?.length)
+      }))
     });
 
     // Process markets
     const markets = [];
     const skippedMarkets = [];
 
-    for (const market of rawMarkets) {
+    for (const market of multiOptionMarkets) {
       const processed = extractContenders(market, topN, log);
       if (processed.contenders.length > 0) {
         markets.push(processed);
+        log('DEBUG', 'Found market with person contenders', {
+          title: processed.title.substring(0, 60),
+          contenders: processed.contenders.map(c => c.name)
+        });
       } else {
         skippedMarkets.push({
           title: market.question || market.title || 'Unknown',
@@ -80,7 +139,8 @@ export default async (request, context) => {
 
     if (markets.length === 0) {
       log('WARN', 'No markets with person contenders found', {
-        totalRawMarkets: rawMarkets.length,
+        totalRawMarkets: allMarkets.length,
+        multiOptionMarkets: multiOptionMarkets.length,
         skippedReasons: skippedMarkets.slice(0, 10)
       });
     }
