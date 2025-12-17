@@ -9,6 +9,7 @@
  * - Confidence scoring for birth dates
  * - Smart dynamic batching
  * - Incremental crawl support
+ * - Rate limiting for Wikipedia API
  *
  * Phases:
  * - markets: Fetch markets and extract people (returns list to look up)
@@ -27,18 +28,22 @@ import {
   calculateBatchSize,
   deduplicatePeople
 } from './lib/utils.js';
+import { createLogger } from './lib/logger.js';
+import { validateConfig } from './lib/config.js';
+import { withWikipediaRateLimit, getWikipediaLimiter } from './lib/rate-limiter.js';
+
+// Validate configuration on startup
+validateConfig();
 
 export default async (request, context) => {
-  const logs = [];
+  const logger = createLogger('crawl');
+
+  // Legacy log function for backwards compatibility with response format
   const log = (level, message, data = null) => {
-    const entry = {
-      timestamp: new Date().toISOString(),
-      level,
-      message,
-      data
-    };
-    logs.push(entry);
-    console.log(`[${level}] ${message}`, data || '');
+    const logFn = level === 'ERROR' ? logger.error :
+                  level === 'WARN' ? logger.warn :
+                  level === 'DEBUG' ? logger.debug : logger.info;
+    logFn.call(logger, message, data);
   };
 
   const url = new URL(request.url);
@@ -86,7 +91,7 @@ export default async (request, context) => {
           cached: cachedCount,
           uncached: names.length - cachedCount
         },
-        logs
+        logs: logger.getLogs()
       });
     }
 
@@ -129,7 +134,7 @@ export default async (request, context) => {
           )
         },
         lastFetchTime,
-        logs
+        logs: logger.getLogs()
       });
     }
 
@@ -167,7 +172,7 @@ export default async (request, context) => {
         phase: 'lookup',
         results,
         stats: { cacheHits, wikiFetches, found },
-        logs
+        logs: logger.getLogs()
       });
     }
 
@@ -240,7 +245,7 @@ export default async (request, context) => {
       phase: 'full',
       stats,
       results,
-      logs,
+      logs: logger.getLogs(),
       crawledAt: new Date().toISOString()
     });
 
@@ -250,7 +255,7 @@ export default async (request, context) => {
     return jsonResponse({
       success: false,
       error: error.message,
-      logs
+      logs: logger.getLogs()
     }, 500);
   }
 };
@@ -300,17 +305,21 @@ async function lookupPersonOptimized(name, log) {
 }
 
 /**
- * Fetch from Wikipedia with retry and exponential backoff
+ * Fetch from Wikipedia with retry, rate limiting, and exponential backoff
  */
 async function fetchFromWikipediaWithRetry(name, log) {
   return withRetry(
-    () => fetchFromWikipedia(name),
+    // Wrap the fetch in rate limiting
+    () => withWikipediaRateLimit(() => fetchFromWikipedia(name)),
     {
       maxRetries: 2,
       baseDelayMs: 500,
       maxDelayMs: 3000,
       shouldRetry: (error) => {
-        // Retry on network errors and 5xx errors
+        // Retry on network errors and 5xx errors, but not rate limit errors
+        if (error.message.includes('Rate limiter queue full')) {
+          return false;
+        }
         return error.message.includes('fetch') ||
                error.message.includes('500') ||
                error.message.includes('502') ||

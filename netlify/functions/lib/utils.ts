@@ -11,27 +11,36 @@ import { getStore } from '@netlify/blobs';
 import celebrities from '../data/celebrities.json' with { type: 'json' };
 import { createLogger } from './logger.js';
 import { getConfig } from './config.js';
+import type {
+  WikipediaResult,
+  CelebrityDatabase,
+  BirthInfo,
+  Person,
+  SimilarPersonMatch
+} from './types.js';
 
 const logger = createLogger('utils');
 
+// Type the imported JSON
+const celebrityDb = celebrities as CelebrityDatabase;
+
 // Cache settings
 const CACHE_STORE_NAME = 'wiki-cache';
-const getCacheTTL = () => getConfig('CACHE_TTL_DAYS') || 30;
+const getCacheTTL = (): number => getConfig('CACHE_TTL_DAYS') || 30;
 
 /**
  * Get a cached Wikipedia result from Netlify Blobs
  */
-export async function getCachedResult(name) {
+export async function getCachedResult(name: string): Promise<WikipediaResult | null> {
   try {
     const store = getStore(CACHE_STORE_NAME);
     const key = normalizeName(name);
-    const cached = await store.get(key, { type: 'json' });
+    const cached = await store.get(key, { type: 'json' }) as WikipediaResult | null;
 
     if (cached) {
-      // Check if cache is still valid
-      const cachedAt = new Date(cached.cachedAt);
+      const cachedAt = new Date(cached.cachedAt!);
       const now = new Date();
-      const daysSinceCached = (now - cachedAt) / (1000 * 60 * 60 * 24);
+      const daysSinceCached = (now.getTime() - cachedAt.getTime()) / (1000 * 60 * 60 * 24);
       const ttl = getCacheTTL();
 
       if (daysSinceCached < ttl) {
@@ -42,8 +51,7 @@ export async function getCachedResult(name) {
     }
     return null;
   } catch (error) {
-    // Blobs might not be available in local dev
-    logger.warn('Cache read failed', { name, error: error.message });
+    logger.warn('Cache read failed', { name, error: (error as Error).message });
     return null;
   }
 }
@@ -51,7 +59,7 @@ export async function getCachedResult(name) {
 /**
  * Store a Wikipedia result in Netlify Blobs cache
  */
-export async function setCachedResult(name, result) {
+export async function setCachedResult(name: string, result: WikipediaResult): Promise<boolean> {
   try {
     const store = getStore(CACHE_STORE_NAME);
     const key = normalizeName(name);
@@ -62,7 +70,7 @@ export async function setCachedResult(name, result) {
     logger.debug('Cache write success', { name: key });
     return true;
   } catch (error) {
-    logger.warn('Cache write failed', { name, error: error.message });
+    logger.warn('Cache write failed', { name, error: (error as Error).message });
     return false;
   }
 }
@@ -70,9 +78,9 @@ export async function setCachedResult(name, result) {
 /**
  * Look up a name in the pre-computed celebrity database
  */
-export function getCelebrityData(name) {
+export function getCelebrityData(name: string): WikipediaResult | null {
   const normalized = normalizeName(name);
-  const celeb = celebrities.celebrities[normalized];
+  const celeb = celebrityDb.celebrities[normalized];
 
   if (celeb) {
     return {
@@ -89,7 +97,7 @@ export function getCelebrityData(name) {
   // Try fuzzy match against celebrity names
   const match = fuzzyMatchCelebrity(normalized);
   if (match) {
-    const matchedCeleb = celebrities.celebrities[match];
+    const matchedCeleb = celebrityDb.celebrities[match];
     return {
       found: true,
       birthDate: matchedCeleb.birthDate,
@@ -108,10 +116,10 @@ export function getCelebrityData(name) {
 /**
  * Fuzzy match against celebrity database
  */
-function fuzzyMatchCelebrity(name) {
+function fuzzyMatchCelebrity(name: string): string | null {
   const nameParts = name.split(/\s+/);
 
-  for (const celebName of Object.keys(celebrities.celebrities)) {
+  for (const celebName of Object.keys(celebrityDb.celebrities)) {
     const celebParts = celebName.split(/\s+/);
 
     // Single name matches surname
@@ -132,7 +140,6 @@ function fuzzyMatchCelebrity(name) {
       const celebLastName = celebParts[celebParts.length - 1];
 
       if (nameLastName === celebLastName) {
-        // Check first initial
         if (nameParts[0][0] === celebParts[0][0]) {
           return celebName;
         }
@@ -146,42 +153,36 @@ function fuzzyMatchCelebrity(name) {
 /**
  * Normalize a name for consistent lookups
  */
-export function normalizeName(name) {
+export function normalizeName(name: string): string {
   return name.toLowerCase().trim()
-    .replace(/['']/g, "'")  // Normalize apostrophes
-    .replace(/\s+/g, ' ');  // Normalize whitespace
+    .replace(/['']/g, "'")
+    .replace(/\s+/g, ' ');
 }
 
 /**
  * Calculate similarity score between two names (0-100)
- * Uses a combination of techniques: exact match, substring, word overlap
  */
-export function nameSimilarity(name1, name2) {
+export function nameSimilarity(name1: string, name2: string): number {
   const n1 = normalizeName(name1);
   const n2 = normalizeName(name2);
 
-  // Exact match
   if (n1 === n2) return 100;
 
-  // One contains the other
   if (n1.includes(n2) || n2.includes(n1)) {
     const shorter = n1.length < n2.length ? n1 : n2;
     const longer = n1.length >= n2.length ? n1 : n2;
     return Math.round((shorter.length / longer.length) * 90);
   }
 
-  // Word overlap
   const words1 = new Set(n1.split(/\s+/));
   const words2 = new Set(n2.split(/\s+/));
   const intersection = [...words1].filter(w => words2.has(w));
   const union = new Set([...words1, ...words2]);
 
   if (intersection.length > 0) {
-    // Jaccard similarity scaled to 0-80
     return Math.round((intersection.length / union.size) * 80);
   }
 
-  // Levenshtein-based similarity for short names
   if (n1.length < 20 && n2.length < 20) {
     const distance = levenshteinDistance(n1, n2);
     const maxLen = Math.max(n1.length, n2.length);
@@ -195,10 +196,10 @@ export function nameSimilarity(name1, name2) {
 /**
  * Levenshtein distance between two strings
  */
-function levenshteinDistance(s1, s2) {
+function levenshteinDistance(s1: string, s2: string): number {
   const m = s1.length;
   const n = s2.length;
-  const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+  const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
 
   for (let i = 0; i <= m; i++) dp[i][0] = i;
   for (let j = 0; j <= n; j++) dp[0][j] = j;
@@ -218,9 +219,8 @@ function levenshteinDistance(s1, s2) {
 
 /**
  * Find existing person in list using fuzzy matching
- * Returns the person if similarity >= threshold
  */
-export function findSimilarPerson(name, peopleList, threshold = 70) {
+export function findSimilarPerson(name: string, peopleList: Person[], threshold: number = 70): SimilarPersonMatch | null {
   const normalized = normalizeName(name);
 
   for (const person of peopleList) {
@@ -233,32 +233,43 @@ export function findSimilarPerson(name, peopleList, threshold = 70) {
   return null;
 }
 
+interface RetryOptions {
+  maxRetries?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+  shouldRetry?: (error: Error) => boolean;
+  onRetry?: (attempt: number, delay: number, error: Error) => void;
+}
+
 /**
  * Retry a function with exponential backoff
  */
-export async function withRetry(fn, options = {}) {
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: RetryOptions = {}
+): Promise<T> {
   const {
     maxRetries = 3,
     baseDelayMs = 1000,
     maxDelayMs = 10000,
-    shouldRetry = (error) => true,
+    shouldRetry = () => true,
     onRetry = () => {}
   } = options;
 
-  let lastError;
+  let lastError: Error | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
     } catch (error) {
-      lastError = error;
+      lastError = error as Error;
 
-      if (attempt === maxRetries || !shouldRetry(error)) {
+      if (attempt === maxRetries || !shouldRetry(lastError)) {
         throw error;
       }
 
       const delay = Math.min(baseDelayMs * Math.pow(2, attempt), maxDelayMs);
-      onRetry(attempt + 1, delay, error);
+      onRetry(attempt + 1, delay, lastError);
       await sleep(delay);
     }
   }
@@ -269,50 +280,42 @@ export async function withRetry(fn, options = {}) {
 /**
  * Sleep for a given number of milliseconds
  */
-export function sleep(ms) {
+export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
  * Calculate confidence score for a birth date extraction
- * 100 = full date from infobox
- * 80 = full date from text pattern
- * 60 = year only
- * 0 = not found
  */
-export function calculateConfidence(birthInfo, source) {
+export function calculateConfidence(birthInfo: BirthInfo | null, source: string): number {
   if (!birthInfo) return 0;
 
-  // Check if we have full date (YYYY-MM-DD)
   const hasFullDate = birthInfo.raw && /^\d{4}-\d{2}-\d{2}$/.test(birthInfo.raw);
 
   if (hasFullDate) {
-    // Infobox patterns are most reliable
     if (source === 'infobox') return 100;
-    // Text patterns are slightly less reliable
     if (source === 'text') return 80;
     return 90;
   }
 
-  // Year only
   if (birthInfo.raw && /^\d{4}$/.test(birthInfo.raw)) {
     return 60;
   }
 
-  return 50; // Partial info
+  return 50;
 }
 
 /**
  * Extract birth date with confidence scoring
  */
-export function extractBirthDateWithConfidence(wikitext) {
+export function extractBirthDateWithConfidence(wikitext: string): BirthInfo | null {
   const months = ['January', 'February', 'March', 'April', 'May', 'June',
                   'July', 'August', 'September', 'October', 'November', 'December'];
 
-  // Pattern 1: {{birth date and age|YYYY|MM|DD}} - Most reliable
+  // Pattern 1: {{birth date and age|YYYY|MM|DD}}
   let match = wikitext.match(/\{\{[Bb]irth date(?: and age)?\|(\d{4})\|(\d{1,2})\|(\d{1,2})/);
   if (match) {
-    const [_, year, month, day] = match;
+    const [, year, month, day] = match;
     return {
       formatted: `${months[parseInt(month) - 1]} ${parseInt(day)}, ${year}`,
       raw: `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`,
@@ -324,7 +327,7 @@ export function extractBirthDateWithConfidence(wikitext) {
   // Pattern 2: birth_date = {{birth date and age|...}}
   match = wikitext.match(/birth_date\s*=\s*\{\{[^|]+\|(\d{4})\|(\d{1,2})\|(\d{1,2})/i);
   if (match) {
-    const [_, year, month, day] = match;
+    const [, year, month, day] = match;
     return {
       formatted: `${months[parseInt(month) - 1]} ${parseInt(day)}, ${year}`,
       raw: `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`,
@@ -336,7 +339,7 @@ export function extractBirthDateWithConfidence(wikitext) {
   // Pattern 3: "born January 22, 1962"
   match = wikitext.match(/\(?\s*born\s+([A-Z][a-z]+)\s+(\d{1,2}),?\s+(\d{4})/);
   if (match) {
-    const [_, monthName, day, year] = match;
+    const [, monthName, day, year] = match;
     const monthIndex = months.findIndex(m => m.toLowerCase() === monthName.toLowerCase());
     if (monthIndex !== -1) {
       return {
@@ -351,7 +354,7 @@ export function extractBirthDateWithConfidence(wikitext) {
   // Pattern 4: "born 22 January 1962"
   match = wikitext.match(/born\s+(\d{1,2})\s+([A-Z][a-z]+)\s+(\d{4})/);
   if (match) {
-    const [_, day, monthName, year] = match;
+    const [, day, monthName, year] = match;
     const monthIndex = months.findIndex(m => m.toLowerCase() === monthName.toLowerCase());
     if (monthIndex !== -1) {
       return {
@@ -374,7 +377,7 @@ export function extractBirthDateWithConfidence(wikitext) {
     };
   }
 
-  // Pattern 6: "born in YYYY" or "born circa YYYY"
+  // Pattern 6: "born in YYYY"
   match = wikitext.match(/born\s+(?:in\s+|circa\s+|c\.\s*)?(\d{4})/i);
   if (match) {
     return {
@@ -390,13 +393,16 @@ export function extractBirthDateWithConfidence(wikitext) {
 
 /**
  * Smart batch sizing based on cache hits
- * Returns larger batches when many names are cached
  */
-export function calculateBatchSize(names, cachedNames, baseBatchSize = 5, maxBatchSize = 15) {
+export function calculateBatchSize(
+  names: string[],
+  cachedNames: Set<string>,
+  baseBatchSize: number = 5,
+  maxBatchSize: number = 15
+): number {
   const cachedCount = names.filter(n => cachedNames.has(normalizeName(n))).length;
   const cacheRatio = cachedCount / names.length;
 
-  // If most names are cached, we can handle larger batches
   if (cacheRatio >= 0.8) return maxBatchSize;
   if (cacheRatio >= 0.5) return Math.min(baseBatchSize * 2, maxBatchSize);
   return baseBatchSize;
@@ -404,21 +410,18 @@ export function calculateBatchSize(names, cachedNames, baseBatchSize = 5, maxBat
 
 /**
  * Deduplicate people list with fuzzy matching
- * Keeps the most complete name for each person
  */
-export function deduplicatePeople(peopleList, threshold = 70) {
-  const deduped = [];
+export function deduplicatePeople(peopleList: Person[], threshold: number = 70): Person[] {
+  const deduped: Person[] = [];
 
   for (const person of peopleList) {
     const match = findSimilarPerson(person.name, deduped, threshold);
 
     if (match) {
-      // Prefer the longer/more complete name
       if (person.name.length > match.person.name.length) {
         match.person.name = person.name;
         match.person.nameKey = normalizeName(person.name);
       }
-      // Merge markets
       match.person.markets = [...match.person.markets, ...person.markets];
     } else {
       deduped.push({
