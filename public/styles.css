@@ -663,6 +663,59 @@ footer a {
   cursor: pointer;
 }
 
+/* Confidence Badges */
+.confidence-badge {
+  display: inline-block;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+.confidence-high {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--success);
+}
+
+.confidence-medium {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--info);
+}
+
+.confidence-low {
+  background: rgba(245, 158, 11, 0.2);
+  color: var(--warning);
+}
+
+/* Source Badges */
+.source-badge {
+  display: inline-block;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  margin-left: 0.375rem;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+
+.source-celeb {
+  background: rgba(139, 92, 246, 0.2);
+  color: #a78bfa;
+}
+
+.source-cache {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--success);
+}
+
+.source-error {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--danger);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .container {

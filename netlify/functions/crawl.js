@@ -1,8 +1,32 @@
 /**
- * Netlify Function: Chunked crawl - supports progressive loading
- * Phase 1: Fetch markets and extract people (returns list to look up)
- * Phase 2: Look up batch of people on Wikipedia
+ * Netlify Function: Optimized chunked crawl with caching
+ *
+ * Features:
+ * - Netlify Blobs caching for Wikipedia results
+ * - Pre-computed celebrity database for instant lookups
+ * - Fuzzy name matching and deduplication
+ * - Retry with exponential backoff
+ * - Confidence scoring for birth dates
+ * - Smart dynamic batching
+ * - Incremental crawl support
+ *
+ * Phases:
+ * - markets: Fetch markets and extract people (returns list to look up)
+ * - lookup: Look up batch of people on Wikipedia (with caching)
+ * - cache-status: Check cache status for names
  */
+
+import {
+  getCachedResult,
+  setCachedResult,
+  getCelebrityData,
+  normalizeName,
+  findSimilarPerson,
+  withRetry,
+  extractBirthDateWithConfidence,
+  calculateBatchSize,
+  deduplicatePeople
+} from './lib/utils.js';
 
 export default async (request, context) => {
   const logs = [];
@@ -21,59 +45,133 @@ export default async (request, context) => {
   const phase = url.searchParams.get('phase') || 'full';
   const limit = parseInt(url.searchParams.get('limit')) || 50;
   const topN = parseInt(url.searchParams.get('top')) || 4;
+  const incrementalSince = url.searchParams.get('since'); // ISO date for incremental crawls
 
   try {
-    // Phase 1: Fetch markets and extract people
-    if (phase === 'markets') {
-      log('INFO', 'Phase 1: Fetching markets', { limit, topN });
-      const { markets, people, logs: marketLogs } = await fetchMarketsAndPeople(limit, topN, log);
-
-      return new Response(JSON.stringify({
-        success: true,
-        phase: 'markets',
-        markets,
-        people, // Array of { name, nameKey, markets: [...] }
-        logs
-      }), {
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Phase 2: Look up a batch of people on Wikipedia
-    if (phase === 'lookup') {
+    // Phase: Check cache status for names (helps frontend optimize batching)
+    if (phase === 'cache-status') {
       const namesParam = url.searchParams.get('names');
       if (!namesParam) {
-        return new Response(JSON.stringify({
-          success: false,
-          error: 'Missing names parameter',
-          logs
-        }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
+        return jsonResponse({ success: false, error: 'Missing names parameter' }, 400);
       }
 
       const names = JSON.parse(namesParam);
-      log('INFO', 'Phase 2: Looking up people', { count: names.length, names });
+      const cacheStatus = await Promise.all(
+        names.map(async (name) => {
+          // Check celebrity DB first
+          const celebData = getCelebrityData(name);
+          if (celebData) {
+            return { name, cached: true, source: 'celebrity-db' };
+          }
+
+          // Check Blobs cache
+          const cached = await getCachedResult(name);
+          if (cached) {
+            return { name, cached: true, source: 'blob-cache' };
+          }
+
+          return { name, cached: false };
+        })
+      );
+
+      const cachedCount = cacheStatus.filter(s => s.cached).length;
+      log('INFO', 'Cache status checked', { total: names.length, cached: cachedCount });
+
+      return jsonResponse({
+        success: true,
+        phase: 'cache-status',
+        cacheStatus,
+        summary: {
+          total: names.length,
+          cached: cachedCount,
+          uncached: names.length - cachedCount
+        },
+        logs
+      });
+    }
+
+    // Phase 1: Fetch markets and extract people
+    if (phase === 'markets') {
+      log('INFO', 'Phase 1: Fetching markets', { limit, topN, incrementalSince });
+      const { markets, people, lastFetchTime } = await fetchMarketsAndPeople(limit, topN, log, incrementalSince);
+
+      // Pre-check cache status for smart batching hints
+      const cachedNames = new Set();
+      for (const person of people) {
+        const celebData = getCelebrityData(person.name);
+        if (celebData) {
+          cachedNames.add(person.nameKey);
+          continue;
+        }
+        const cached = await getCachedResult(person.name);
+        if (cached) {
+          cachedNames.add(person.nameKey);
+        }
+      }
+
+      log('INFO', 'Cache pre-check complete', {
+        totalPeople: people.length,
+        cachedCount: cachedNames.size,
+        uncachedCount: people.length - cachedNames.size
+      });
+
+      return jsonResponse({
+        success: true,
+        phase: 'markets',
+        markets,
+        people,
+        cacheHints: {
+          cachedCount: cachedNames.size,
+          uncachedCount: people.length - cachedNames.size,
+          suggestedBatchSize: calculateBatchSize(
+            people.map(p => p.name),
+            cachedNames
+          )
+        },
+        lastFetchTime,
+        logs
+      });
+    }
+
+    // Phase 2: Look up a batch of people on Wikipedia (with caching)
+    if (phase === 'lookup') {
+      const namesParam = url.searchParams.get('names');
+      if (!namesParam) {
+        return jsonResponse({ success: false, error: 'Missing names parameter' }, 400);
+      }
+
+      const names = JSON.parse(namesParam);
+      log('INFO', 'Phase 2: Looking up people', { count: names.length });
 
       const results = await Promise.all(
         names.map(async (name) => {
-          const result = await lookupPerson(name, log);
+          const result = await lookupPersonOptimized(name, log);
           return { name, ...result };
         })
       );
 
-      return new Response(JSON.stringify({
+      // Summary stats
+      const cacheHits = results.filter(r => r.source === 'celebrity-db' || r.source === 'cache').length;
+      const wikiFetches = results.filter(r => r.source === 'wikipedia').length;
+      const found = results.filter(r => r.found).length;
+
+      log('INFO', 'Lookup batch complete', {
+        total: results.length,
+        cacheHits,
+        wikiFetches,
+        found
+      });
+
+      return jsonResponse({
         success: true,
         phase: 'lookup',
         results,
+        stats: { cacheHits, wikiFetches, found },
         logs
-      }), {
-        headers: { 'Content-Type': 'application/json' }
       });
     }
 
-    // Full mode (legacy) - for backwards compatibility, but with limits
+    // Full mode (legacy) - for backwards compatibility
     log('INFO', 'Full crawl mode', { limit, topN });
     const { markets, people } = await fetchMarketsAndPeople(limit, topN, log);
 
@@ -86,7 +184,7 @@ export default async (request, context) => {
       looking_up: namesToLookup.length
     });
 
-    // Parallel Wikipedia lookups
+    // Parallel Wikipedia lookups with caching
     const wikiResults = new Map();
     const batchSize = 5;
 
@@ -95,7 +193,7 @@ export default async (request, context) => {
 
       const batchResults = await Promise.all(
         batch.map(async (person) => {
-          const result = await lookupPerson(person.name, log);
+          const result = await lookupPersonOptimized(person.name, log);
           return { ...person, ...result };
         })
       );
@@ -137,43 +235,205 @@ export default async (request, context) => {
 
     log('INFO', 'Crawl completed', stats);
 
-    return new Response(JSON.stringify({
+    return jsonResponse({
       success: true,
       phase: 'full',
       stats,
       results,
       logs,
       crawledAt: new Date().toISOString()
-    }), {
-      headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (error) {
     log('ERROR', 'Crawl failed', { error: error.message, stack: error.stack });
 
-    return new Response(JSON.stringify({
+    return jsonResponse({
       success: false,
       error: error.message,
       logs
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    }, 500);
   }
 };
 
 /**
+ * JSON response helper
+ */
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
+/**
+ * Optimized person lookup with caching layers
+ * 1. Check celebrity database (instant)
+ * 2. Check Netlify Blobs cache
+ * 3. Fetch from Wikipedia with retry
+ * 4. Cache the result
+ */
+async function lookupPersonOptimized(name, log) {
+  // Layer 1: Celebrity database (instant, no API call)
+  const celebData = getCelebrityData(name);
+  if (celebData) {
+    log('INFO', `Celebrity DB hit: ${name}`, { source: 'celebrity-db' });
+    return celebData;
+  }
+
+  // Layer 2: Netlify Blobs cache
+  const cached = await getCachedResult(name);
+  if (cached) {
+    log('INFO', `Cache hit: ${name}`, { source: 'cache' });
+    return cached;
+  }
+
+  // Layer 3: Wikipedia API with retry
+  log('INFO', `Wikipedia fetch: ${name}`);
+  const result = await fetchFromWikipediaWithRetry(name, log);
+
+  // Cache the result (even negative results to avoid repeated lookups)
+  if (result) {
+    await setCachedResult(name, result);
+  }
+
+  return result;
+}
+
+/**
+ * Fetch from Wikipedia with retry and exponential backoff
+ */
+async function fetchFromWikipediaWithRetry(name, log) {
+  return withRetry(
+    () => fetchFromWikipedia(name),
+    {
+      maxRetries: 2,
+      baseDelayMs: 500,
+      maxDelayMs: 3000,
+      shouldRetry: (error) => {
+        // Retry on network errors and 5xx errors
+        return error.message.includes('fetch') ||
+               error.message.includes('500') ||
+               error.message.includes('502') ||
+               error.message.includes('503');
+      },
+      onRetry: (attempt, delay, error) => {
+        log('WARN', `Retry ${attempt} for ${name}`, { delay, error: error.message });
+      }
+    }
+  ).catch(error => {
+    log('ERROR', `Wikipedia fetch failed for ${name}`, { error: error.message });
+    return {
+      found: false,
+      status: `Error: ${error.message}`,
+      source: 'wikipedia-error'
+    };
+  });
+}
+
+/**
+ * Fetch person data from Wikipedia
+ */
+async function fetchFromWikipedia(name) {
+  const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name)}&srlimit=5&format=json&origin=*`;
+
+  const searchResponse = await fetch(searchUrl, {
+    headers: { 'User-Agent': 'PolyCrawler/1.1 (Horoscope research)' }
+  });
+
+  if (!searchResponse.ok) {
+    throw new Error(`Wikipedia search failed: ${searchResponse.status}`);
+  }
+
+  const searchData = await searchResponse.json();
+  const results = searchData.query?.search || [];
+
+  if (results.length === 0) {
+    return {
+      found: false,
+      status: 'Wikipedia page not found',
+      source: 'wikipedia'
+    };
+  }
+
+  // Find best match
+  const nameLower = name.toLowerCase();
+  let title = results[0].title;
+  for (const result of results) {
+    if (result.title.toLowerCase().includes(nameLower)) {
+      title = result.title;
+      break;
+    }
+  }
+
+  // Get page content
+  const contentUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=revisions&rvprop=content&rvslots=main&format=json&origin=*`;
+
+  const contentResponse = await fetch(contentUrl, {
+    headers: { 'User-Agent': 'PolyCrawler/1.1 (Horoscope research)' }
+  });
+
+  if (!contentResponse.ok) {
+    throw new Error('Wikipedia content fetch failed');
+  }
+
+  const contentData = await contentResponse.json();
+  const pages = contentData.query?.pages || {};
+
+  let wikitext = null;
+  for (const pageId in pages) {
+    if (pageId !== '-1') {
+      wikitext = pages[pageId].revisions?.[0]?.slots?.main?.['*'];
+      break;
+    }
+  }
+
+  if (!wikitext) {
+    return {
+      found: false,
+      status: 'Wikipedia page not found',
+      source: 'wikipedia'
+    };
+  }
+
+  const wikipediaUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
+  const birthInfo = extractBirthDateWithConfidence(wikitext);
+
+  if (birthInfo) {
+    return {
+      found: true,
+      wikipediaUrl,
+      birthDate: birthInfo.formatted,
+      birthDateRaw: birthInfo.raw,
+      confidence: birthInfo.confidence,
+      status: 'Found',
+      source: 'wikipedia'
+    };
+  } else {
+    return {
+      found: true,
+      wikipediaUrl,
+      birthDate: null,
+      birthDateRaw: null,
+      confidence: 0,
+      status: 'Birth date not found on Wikipedia',
+      source: 'wikipedia'
+    };
+  }
+}
+
+/**
  * Fetch markets and extract unique people
  */
-async function fetchMarketsAndPeople(limit, topN, log) {
+async function fetchMarketsAndPeople(limit, topN, log, sinceDateStr = null) {
   const allMarkets = [];
+  const lastFetchTime = new Date().toISOString();
 
   // Fetch from events endpoint
   log('INFO', 'Fetching events from Polymarket API');
   try {
     const eventsUrl = `https://gamma-api.polymarket.com/events?limit=${limit}&active=true&closed=false`;
     const eventsResponse = await fetch(eventsUrl, {
-      headers: { 'User-Agent': 'PolyCrawler/1.0' }
+      headers: { 'User-Agent': 'PolyCrawler/1.1' }
     });
 
     if (eventsResponse.ok) {
@@ -181,11 +441,18 @@ async function fetchMarketsAndPeople(limit, topN, log) {
       log('INFO', 'Events fetched', { count: events.length });
 
       for (const event of events) {
+        // Incremental filter: skip events older than since date
+        if (sinceDateStr && event.startDate) {
+          const eventDate = new Date(event.startDate);
+          const sinceDate = new Date(sinceDateStr);
+          if (eventDate < sinceDate) continue;
+        }
+
         if (event.markets && Array.isArray(event.markets)) {
           for (const market of event.markets) {
             market._source = 'events';
-            market._eventSlug = event.slug; // Store parent event slug
-            market._eventTitle = event.title || event.question || null; // Store parent event title
+            market._eventSlug = event.slug;
+            market._eventTitle = event.title || event.question || null;
             allMarkets.push(market);
           }
         }
@@ -200,7 +467,7 @@ async function fetchMarketsAndPeople(limit, topN, log) {
   const apiUrl = `https://gamma-api.polymarket.com/markets?limit=${Math.max(limit, 100)}&active=true&closed=false`;
 
   const marketResponse = await fetch(apiUrl, {
-    headers: { 'User-Agent': 'PolyCrawler/1.0' }
+    headers: { 'User-Agent': 'PolyCrawler/1.1' }
   });
 
   if (!marketResponse.ok) {
@@ -214,6 +481,13 @@ async function fetchMarketsAndPeople(limit, topN, log) {
   const existingSlugs = new Set(allMarkets.map(m => m.slug));
   for (const market of rawMarkets) {
     if (!existingSlugs.has(market.slug)) {
+      // Incremental filter
+      if (sinceDateStr && market.startDate) {
+        const marketDate = new Date(market.startDate);
+        const sinceDate = new Date(sinceDateStr);
+        if (marketDate < sinceDate) continue;
+      }
+
       market._source = 'markets';
       allMarkets.push(market);
     }
@@ -223,7 +497,7 @@ async function fetchMarketsAndPeople(limit, topN, log) {
 
   // Extract people from markets
   const markets = [];
-  const peopleList = []; // Array of { name, nameKey, markets: [...] }
+  let peopleList = [];
 
   for (const market of allMarkets) {
     const processed = extractPeopleFromMarket(market, topN);
@@ -231,79 +505,55 @@ async function fetchMarketsAndPeople(limit, topN, log) {
       markets.push(processed);
 
       for (const person of processed.people) {
-        // Find existing person using smart deduplication
-        let existingPerson = findExistingPerson(person.name, peopleList);
+        // Use fuzzy matching for better deduplication
+        const match = findSimilarPerson(person.name, peopleList, 75);
 
-        if (!existingPerson) {
-          existingPerson = {
+        if (!match) {
+          peopleList.push({
             name: person.name,
-            nameKey: person.name.toLowerCase(),
-            markets: []
-          };
-          peopleList.push(existingPerson);
+            nameKey: normalizeName(person.name),
+            markets: [{
+              title: processed.title,
+              slug: processed.slug,
+              eventTitle: processed.eventTitle,
+              conditionId: processed.conditionId,
+              volume: processed.volume,
+              endDate: processed.endDate,
+              probability: person.probability,
+              source: person.source
+            }]
+          });
         } else {
           // Prefer the longer/fuller name
-          if (person.name.length > existingPerson.name.length) {
-            existingPerson.name = person.name;
-            existingPerson.nameKey = person.name.toLowerCase();
+          if (person.name.length > match.person.name.length) {
+            match.person.name = person.name;
+            match.person.nameKey = normalizeName(person.name);
           }
-        }
 
-        existingPerson.markets.push({
-          title: processed.title,
-          slug: processed.slug,
-          eventTitle: processed.eventTitle,
-          conditionId: processed.conditionId,
-          volume: processed.volume,
-          endDate: processed.endDate,
-          probability: person.probability,
-          source: person.source
-        });
+          match.person.markets.push({
+            title: processed.title,
+            slug: processed.slug,
+            eventTitle: processed.eventTitle,
+            conditionId: processed.conditionId,
+            volume: processed.volume,
+            endDate: processed.endDate,
+            probability: person.probability,
+            source: person.source
+          });
+        }
       }
     }
   }
+
+  // Final fuzzy deduplication pass
+  peopleList = deduplicatePeople(peopleList, 75);
 
   log('INFO', 'People extracted', {
     marketsWithPeople: markets.length,
     uniquePeople: peopleList.length
   });
 
-  return { markets, people: peopleList };
-}
-
-/**
- * Find an existing person in the list using smart name matching
- */
-function findExistingPerson(name, peopleList) {
-  const nameLower = name.toLowerCase().trim();
-  const nameParts = nameLower.split(/\s+/);
-
-  for (const person of peopleList) {
-    const existingLower = person.name.toLowerCase().trim();
-    const existingParts = existingLower.split(/\s+/);
-
-    // Exact match
-    if (nameLower === existingLower) return person;
-
-    // Name is a single word (like "Altman") - check if it matches surname
-    if (nameParts.length === 1) {
-      if (existingParts[existingParts.length - 1] === nameParts[0]) return person;
-      if (existingParts.includes(nameParts[0])) return person;
-    }
-
-    // Existing is a single word - check if new name contains it
-    if (existingParts.length === 1) {
-      if (nameParts[nameParts.length - 1] === existingParts[0]) return person;
-      if (nameParts.includes(existingParts[0])) return person;
-    }
-
-    // One contains the other
-    if (nameLower.includes(existingLower) || existingLower.includes(nameLower)) {
-      return person;
-    }
-  }
-
-  return null;
+  return { markets, people: peopleList, lastFetchTime };
 }
 
 /**
@@ -312,14 +562,14 @@ function findExistingPerson(name, peopleList) {
 function extractPeopleFromMarket(market, topN) {
   const title = market.question || market.title || 'Unknown';
   const slug = market._eventSlug || market.slug || '';
-  const eventTitle = market._eventTitle || null; // Parent event title (for grouping)
+  const eventTitle = market._eventTitle || null;
   const conditionId = market.conditionId || market.condition_id || '';
   const volume = parseFloat(market.volume || 0);
   const endDate = market.endDate || market.end_date_iso || null;
 
   const people = [];
 
-  // Extract from outcomes FIRST (these are authoritative - actual nominees)
+  // Extract from outcomes FIRST (these are authoritative)
   const outcomeNames = extractFromOutcomes(market, topN);
   for (const { name, probability } of outcomeNames) {
     if (!isDuplicatePerson(name, people)) {
@@ -327,7 +577,7 @@ function extractPeopleFromMarket(market, topN) {
     }
   }
 
-  // Extract from title - but skip if already covered by an outcome
+  // Extract from title - but skip if already covered
   const titleNames = extractNamesFromText(title);
   for (const name of titleNames) {
     if (!isDuplicatePerson(name, people)) {
@@ -339,8 +589,7 @@ function extractPeopleFromMarket(market, topN) {
 }
 
 /**
- * Check if a name is a duplicate of someone already in the list
- * Handles cases like "Altman" matching "Sam Altman"
+ * Check if a name is a duplicate using fuzzy matching
  */
 function isDuplicatePerson(newName, existingPeople) {
   const newLower = newName.toLowerCase().trim();
@@ -353,21 +602,18 @@ function isDuplicatePerson(newName, existingPeople) {
     // Exact match
     if (newLower === existingLower) return true;
 
-    // New name is a single word (like "Altman") - check if it's a surname in existing
+    // Single word surname match
     if (newParts.length === 1) {
-      // Check if it's the last part (surname) of an existing name
       if (existingParts[existingParts.length - 1] === newParts[0]) return true;
-      // Also check if existing contains this word
       if (existingParts.includes(newParts[0])) return true;
     }
 
-    // Existing is a single word - check if new name contains it as surname
     if (existingParts.length === 1) {
       if (newParts[newParts.length - 1] === existingParts[0]) return true;
       if (newParts.includes(existingParts[0])) return true;
     }
 
-    // Check if one contains the other
+    // Substring match
     if (newLower.includes(existingLower) || existingLower.includes(newLower)) {
       return true;
     }
@@ -405,8 +651,7 @@ function extractFromOutcomes(market, topN) {
     }
   }
 
-  // Extract ALL valid person names from outcomes (no limit)
-  // Parse patterns like "Sam Altman - OpenAI" to get just the name
+  // Extract valid person names
   const validOutcomes = [];
   for (const outcome of outcomes) {
     const parsedName = parsePersonFromOutcome(outcome.name);
@@ -421,16 +666,9 @@ function extractFromOutcomes(market, topN) {
   return validOutcomes;
 }
 
-/**
- * Parse person name from outcome strings like:
- * - "Sam Altman - OpenAI" -> "Sam Altman"
- * - "Tim Cook - Apple" -> "Tim Cook"
- * - "John Smith" -> "John Smith"
- */
 function parsePersonFromOutcome(outcomeStr) {
   if (!outcomeStr) return null;
 
-  // Pattern: "Name - Company" or "Name (Company)" or "Name, Title"
   let name = outcomeStr;
 
   // Remove company/title after dash
@@ -438,13 +676,12 @@ function parsePersonFromOutcome(outcomeStr) {
     name = name.split(' - ')[0].trim();
   }
 
-  // Remove company/title in parentheses
+  // Remove parentheticals
   name = name.replace(/\s*\([^)]*\)\s*/g, '').trim();
 
-  // Remove company/title after comma
+  // Remove title after comma
   if (name.includes(', ')) {
     const parts = name.split(', ');
-    // Keep first part if it looks like a name (has multiple words)
     if (parts[0].split(/\s+/).length >= 2) {
       name = parts[0].trim();
     }
@@ -536,7 +773,6 @@ function isLikelyPersonName(name) {
 
   const lower = name.toLowerCase();
 
-  // Filter out names starting with common question words
   if (lower.startsWith('will ') || lower.startsWith('when ') ||
       lower.startsWith('what ') || lower.startsWith('how ') ||
       lower.startsWith('who ') || lower.startsWith('which ')) {
@@ -548,138 +784,6 @@ function isLikelyPersonName(name) {
   }
 
   return name.split(/\s+/).length <= 4;
-}
-
-async function lookupPerson(name, log) {
-  try {
-    const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name)}&srlimit=5&format=json&origin=*`;
-
-    const searchResponse = await fetch(searchUrl, {
-      headers: { 'User-Agent': 'PolyCrawler/1.0' }
-    });
-
-    if (!searchResponse.ok) {
-      return { found: false, status: `Wikipedia search failed: ${searchResponse.status}` };
-    }
-
-    const searchData = await searchResponse.json();
-    const results = searchData.query?.search || [];
-
-    if (results.length === 0) {
-      return { found: false, status: 'Wikipedia page not found' };
-    }
-
-    const nameLower = name.toLowerCase();
-    let title = results[0].title;
-    for (const result of results) {
-      if (result.title.toLowerCase().includes(nameLower)) {
-        title = result.title;
-        break;
-      }
-    }
-
-    const contentUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=revisions&rvprop=content&rvslots=main&format=json&origin=*`;
-
-    const contentResponse = await fetch(contentUrl, {
-      headers: { 'User-Agent': 'PolyCrawler/1.0' }
-    });
-
-    if (!contentResponse.ok) {
-      return { found: false, status: 'Wikipedia fetch failed' };
-    }
-
-    const contentData = await contentResponse.json();
-    const pages = contentData.query?.pages || {};
-
-    let wikitext = null;
-    for (const pageId in pages) {
-      if (pageId !== '-1') {
-        wikitext = pages[pageId].revisions?.[0]?.slots?.main?.['*'];
-        break;
-      }
-    }
-
-    if (!wikitext) {
-      return { found: false, status: 'Wikipedia page not found' };
-    }
-
-    const wikipediaUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
-    const birthInfo = extractBirthDate(wikitext);
-
-    if (birthInfo) {
-      return {
-        found: true,
-        wikipediaUrl,
-        birthDate: birthInfo.formatted,
-        birthDateRaw: birthInfo.raw,
-        status: 'Found'
-      };
-    } else {
-      return {
-        found: true,
-        wikipediaUrl,
-        birthDate: null,
-        birthDateRaw: null,
-        status: 'Birth date not found on Wikipedia'
-      };
-    }
-  } catch (error) {
-    return { found: false, status: `Error: ${error.message}` };
-  }
-}
-
-function extractBirthDate(wikitext) {
-  const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                  'July', 'August', 'September', 'October', 'November', 'December'];
-
-  let match = wikitext.match(/\{\{[Bb]irth date(?: and age)?\|(\d{4})\|(\d{1,2})\|(\d{1,2})/);
-  if (match) {
-    const [_, year, month, day] = match;
-    return {
-      formatted: `${months[parseInt(month) - 1]} ${parseInt(day)}, ${year}`,
-      raw: `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
-    };
-  }
-
-  match = wikitext.match(/birth_date\s*=\s*\{\{[^|]+\|(\d{4})\|(\d{1,2})\|(\d{1,2})/i);
-  if (match) {
-    const [_, year, month, day] = match;
-    return {
-      formatted: `${months[parseInt(month) - 1]} ${parseInt(day)}, ${year}`,
-      raw: `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
-    };
-  }
-
-  match = wikitext.match(/\(?\s*born\s+([A-Z][a-z]+)\s+(\d{1,2}),?\s+(\d{4})/);
-  if (match) {
-    const [_, monthName, day, year] = match;
-    const monthIndex = months.findIndex(m => m.toLowerCase() === monthName.toLowerCase());
-    if (monthIndex !== -1) {
-      return {
-        formatted: `${monthName} ${parseInt(day)}, ${year}`,
-        raw: `${year}-${String(monthIndex + 1).padStart(2, '0')}-${day.padStart(2, '0')}`
-      };
-    }
-  }
-
-  match = wikitext.match(/born\s+(\d{1,2})\s+([A-Z][a-z]+)\s+(\d{4})/);
-  if (match) {
-    const [_, day, monthName, year] = match;
-    const monthIndex = months.findIndex(m => m.toLowerCase() === monthName.toLowerCase());
-    if (monthIndex !== -1) {
-      return {
-        formatted: `${monthName} ${parseInt(day)}, ${year}`,
-        raw: `${year}-${String(monthIndex + 1).padStart(2, '0')}-${day.padStart(2, '0')}`
-      };
-    }
-  }
-
-  match = wikitext.match(/\{\{[Bb]irth year(?: and age)?\|(\d{4})/);
-  if (match) {
-    return { formatted: `${match[1]} (month/day unknown)`, raw: match[1] };
-  }
-
-  return null;
 }
 
 export const config = {

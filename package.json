@@ -1,6 +1,6 @@
 {
   "name": "polycrawler",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Extract Polymarket contender birth dates for horoscope analysis",
   "scripts": {
     "dev": "netlify dev",
@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@netlify/functions": "^2.4.0",
+    "@netlify/blobs": "^8.1.0",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
