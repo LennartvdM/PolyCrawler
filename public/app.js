@@ -430,12 +430,17 @@ function renderResults() {
 
     const foundCount = people.filter(p => p.birthDate).length;
 
+    const hasBirthdate = foundCount > 0;
+
     if (isMultiPerson) {
       return `
         <tr class="market-header" data-market-idx="${idx}" onclick="toggleMarket(${idx})">
           <td class="expand-cell"><span class="expand-icon">▶</span></td>
           <td><strong>${escapeHtml(namesHeader)}</strong></td>
-          <td class="found-summary">${foundCount}/${people.length} found</td>
+          <td class="found-summary">
+            ${hasBirthdate ? '<span class="birthdate-found-badge">✓ Birthdate</span>' : '<span class="birthdate-none-badge">No birthdate</span>'}
+            <span class="found-count">${foundCount}/${people.length}</span>
+          </td>
           <td class="market-title" title="${escapeHtml(market.title)}">${escapeHtml(market.title)}</td>
           <td>${formatDeadline(market.endDate)}</td>
           <td>${getMarketLinkFromGroup(market)}</td>
