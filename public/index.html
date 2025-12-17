@@ -107,6 +107,28 @@
       </div>
     </section>
 
+    <!-- Log Panel -->
+    <section class="log-panel" id="logPanel">
+      <div class="log-header">
+        <h3>Crawl Log</h3>
+        <div class="log-controls">
+          <select id="logLevelFilter">
+            <option value="all">All Levels</option>
+            <option value="ERROR">Errors</option>
+            <option value="WARN">Warnings</option>
+            <option value="INFO">Info</option>
+            <option value="DEBUG">Debug</option>
+          </select>
+          <button id="toggleLogPanel" class="btn-small">Hide</button>
+          <button id="copyLogs" class="btn-small">Copy Logs</button>
+          <button id="clearLogs" class="btn-small">Clear</button>
+        </div>
+      </div>
+      <div class="log-content" id="logContent">
+        <div class="log-empty">No logs yet. Run a crawl to see detailed logs.</div>
+      </div>
+    </section>
+
     <!-- Google Sheets Modal -->
     <div class="modal" id="sheetsModal">
       <div class="modal-content">
