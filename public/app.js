@@ -1,0 +1,379 @@
+// PolyCrawler Frontend Application
+
+let crawlResults = [];
+let filteredResults = [];
+let currentSort = { field: null, direction: 'asc' };
+
+// DOM Elements
+const elements = {
+  runCrawl: document.getElementById('runCrawl'),
+  btnText: document.querySelector('.btn-text'),
+  btnLoading: document.querySelector('.btn-loading'),
+  marketLimit: document.getElementById('marketLimit'),
+  topContenders: document.getElementById('topContenders'),
+  stats: document.getElementById('stats'),
+  actions: document.getElementById('actions'),
+  emptyState: document.getElementById('emptyState'),
+  tableContainer: document.getElementById('tableContainer'),
+  resultsBody: document.getElementById('resultsBody'),
+  filterInput: document.getElementById('filterInput'),
+  filterStatus: document.getElementById('filterStatus'),
+  filterZodiac: document.getElementById('filterZodiac'),
+  exportCsv: document.getElementById('exportCsv'),
+  copyClipboard: document.getElementById('copyClipboard'),
+  openSheetsConfig: document.getElementById('openSheetsConfig'),
+  sheetsModal: document.getElementById('sheetsModal'),
+  closeModal: document.getElementById('closeModal'),
+  sheetsWebAppUrl: document.getElementById('sheetsWebAppUrl'),
+  exportToSheets: document.getElementById('exportToSheets'),
+  sheetsStatus: document.getElementById('sheetsStatus'),
+  appsScriptCode: document.getElementById('appsScriptCode'),
+  copyAppsScript: document.getElementById('copyAppsScript'),
+  // Stats
+  statMarkets: document.getElementById('statMarkets'),
+  statContenders: document.getElementById('statContenders'),
+  statFound: document.getElementById('statFound'),
+  statNoWiki: document.getElementById('statNoWiki'),
+  statNoDate: document.getElementById('statNoDate'),
+};
+
+// Google Apps Script code for the modal
+const appsScriptCode = `function doPost(e) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  const data = JSON.parse(e.postData.contents);
+
+  // Clear existing data (keep headers if they exist)
+  if (sheet.getLastRow() > 1) {
+    sheet.deleteRows(2, sheet.getLastRow() - 1);
+  }
+
+  // Set headers if sheet is empty
+  if (sheet.getLastRow() === 0) {
+    const headers = ['Person Name', 'Zodiac Sign', 'Birth Date', 'Probability',
+                     'Market Title', 'Market Volume', 'Status', 'Wikipedia URL', 'Updated'];
+    sheet.appendRow(headers);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+  }
+
+  // Add data rows
+  for (const row of data.results) {
+    sheet.appendRow([
+      row.personName,
+      row.zodiacSign ? row.zodiacSign.symbol + ' ' + row.zodiacSign.name : 'N/A',
+      row.birthDate || 'N/A',
+      (row.probability || 0).toFixed(1) + '%',
+      row.marketTitle,
+      '$' + (row.marketVolume || 0).toLocaleString(),
+      row.status,
+      row.wikipediaUrl || 'N/A',
+      new Date().toISOString()
+    ]);
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({ success: true, rows: data.results.length }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
+  return ContentService.createTextOutput('PolyCrawler Google Sheets endpoint. Use POST to send data.')
+    .setMimeType(ContentService.MimeType.TEXT);
+}`;
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+  elements.appsScriptCode.textContent = appsScriptCode;
+
+  // Load saved web app URL
+  const savedUrl = localStorage.getItem('sheetsWebAppUrl');
+  if (savedUrl) {
+    elements.sheetsWebAppUrl.value = savedUrl;
+    elements.exportToSheets.disabled = false;
+  }
+
+  setupEventListeners();
+});
+
+function setupEventListeners() {
+  // Run crawl
+  elements.runCrawl.addEventListener('click', runCrawl);
+
+  // Filters
+  elements.filterInput.addEventListener('input', applyFilters);
+  elements.filterStatus.addEventListener('change', applyFilters);
+  elements.filterZodiac.addEventListener('change', applyFilters);
+
+  // Export
+  elements.exportCsv.addEventListener('click', exportToCsv);
+  elements.copyClipboard.addEventListener('click', copyToClipboard);
+
+  // Google Sheets modal
+  elements.openSheetsConfig.addEventListener('click', () => {
+    elements.sheetsModal.classList.add('active');
+  });
+
+  elements.closeModal.addEventListener('click', () => {
+    elements.sheetsModal.classList.remove('active');
+  });
+
+  elements.sheetsModal.addEventListener('click', (e) => {
+    if (e.target === elements.sheetsModal) {
+      elements.sheetsModal.classList.remove('active');
+    }
+  });
+
+  elements.sheetsWebAppUrl.addEventListener('input', () => {
+    const url = elements.sheetsWebAppUrl.value.trim();
+    elements.exportToSheets.disabled = !url.startsWith('https://script.google.com/');
+    if (url) {
+      localStorage.setItem('sheetsWebAppUrl', url);
+    }
+  });
+
+  elements.exportToSheets.addEventListener('click', exportToSheets);
+  elements.copyAppsScript.addEventListener('click', () => {
+    navigator.clipboard.writeText(appsScriptCode);
+    elements.copyAppsScript.textContent = 'Copied!';
+    setTimeout(() => {
+      elements.copyAppsScript.textContent = 'Copy Code';
+    }, 2000);
+  });
+
+  // Table sorting
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const field = th.dataset.sort;
+      sortResults(field);
+    });
+  });
+}
+
+async function runCrawl() {
+  const limit = parseInt(elements.marketLimit.value) || 50;
+  const top = parseInt(elements.topContenders.value) || 4;
+
+  // Update UI
+  elements.runCrawl.disabled = true;
+  elements.btnText.style.display = 'none';
+  elements.btnLoading.style.display = 'inline';
+  elements.emptyState.innerHTML = '<p>Fetching markets and looking up birth dates...</p>';
+
+  try {
+    const response = await fetch(`/api/crawl?limit=${limit}&top=${top}`);
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Crawl failed');
+    }
+
+    crawlResults = data.results;
+    filteredResults = [...crawlResults];
+
+    // Update stats
+    updateStats(data.stats);
+
+    // Show results
+    renderResults();
+
+    elements.stats.style.display = 'flex';
+    elements.actions.style.display = 'flex';
+    elements.emptyState.style.display = 'none';
+    elements.tableContainer.style.display = 'block';
+
+  } catch (error) {
+    console.error('Crawl error:', error);
+    elements.emptyState.innerHTML = `<p style="color: var(--danger);">Error: ${error.message}</p>`;
+  } finally {
+    elements.runCrawl.disabled = false;
+    elements.btnText.style.display = 'inline';
+    elements.btnLoading.style.display = 'none';
+  }
+}
+
+function updateStats(stats) {
+  elements.statMarkets.textContent = stats.totalMarkets;
+  elements.statContenders.textContent = stats.totalContenders;
+  elements.statFound.textContent = stats.birthDatesFound;
+  elements.statNoWiki.textContent = stats.wikipediaNotFound;
+  elements.statNoDate.textContent = stats.birthDateMissing;
+}
+
+function renderResults() {
+  elements.resultsBody.innerHTML = filteredResults.map(r => `
+    <tr>
+      <td><strong>${escapeHtml(r.personName)}</strong></td>
+      <td class="zodiac-cell">${r.zodiacSign ? `<span title="${r.zodiacSign.name}">${r.zodiacSign.symbol}</span>` : '-'}</td>
+      <td>${r.birthDate || '-'}</td>
+      <td class="probability">${r.probability ? r.probability.toFixed(1) + '%' : '-'}</td>
+      <td class="market-title" title="${escapeHtml(r.marketTitle)}">${escapeHtml(r.marketTitle)}</td>
+      <td><span class="status-badge ${getStatusClass(r.status)}">${r.status}</span></td>
+      <td class="link-cell">
+        ${r.wikipediaUrl ? `<a href="${r.wikipediaUrl}" target="_blank">Wikipedia</a>` : ''}
+        ${r.marketSlug ? `<a href="https://polymarket.com/event/${r.marketSlug}" target="_blank">Market</a>` : ''}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function getStatusClass(status) {
+  if (status === 'Found') return 'status-found';
+  if (status.includes('Birth date not found')) return 'status-no-date';
+  return 'status-no-wiki';
+}
+
+function applyFilters() {
+  const searchText = elements.filterInput.value.toLowerCase();
+  const statusFilter = elements.filterStatus.value;
+  const zodiacFilter = elements.filterZodiac.value;
+
+  filteredResults = crawlResults.filter(r => {
+    // Text filter
+    if (searchText) {
+      const matchesText =
+        r.personName.toLowerCase().includes(searchText) ||
+        r.marketTitle.toLowerCase().includes(searchText);
+      if (!matchesText) return false;
+    }
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'found' && r.status !== 'Found') return false;
+      if (statusFilter === 'no-date' && !r.status.includes('Birth date not found')) return false;
+      if (statusFilter === 'no-wiki' && r.found !== false) return false;
+    }
+
+    // Zodiac filter
+    if (zodiacFilter !== 'all') {
+      if (!r.zodiacSign || r.zodiacSign.name !== zodiacFilter) return false;
+    }
+
+    return true;
+  });
+
+  renderResults();
+}
+
+function sortResults(field) {
+  // Toggle direction
+  if (currentSort.field === field) {
+    currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+  } else {
+    currentSort.field = field;
+    currentSort.direction = 'asc';
+  }
+
+  // Update header classes
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.dataset.sort === field) {
+      th.classList.add(currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+    }
+  });
+
+  // Sort
+  filteredResults.sort((a, b) => {
+    let aVal = a[field];
+    let bVal = b[field];
+
+    // Handle zodiac sign sorting
+    if (field === 'zodiacSign') {
+      aVal = a.zodiacSign?.name || '';
+      bVal = b.zodiacSign?.name || '';
+    }
+
+    // Handle null/undefined
+    if (aVal == null) aVal = '';
+    if (bVal == null) bVal = '';
+
+    // Compare
+    let comparison = 0;
+    if (typeof aVal === 'number' && typeof bVal === 'number') {
+      comparison = aVal - bVal;
+    } else {
+      comparison = String(aVal).localeCompare(String(bVal));
+    }
+
+    return currentSort.direction === 'asc' ? comparison : -comparison;
+  });
+
+  renderResults();
+}
+
+function exportToCsv() {
+  const headers = ['Person Name', 'Zodiac Sign', 'Zodiac Symbol', 'Birth Date', 'Birth Date (Raw)',
+                   'Probability %', 'Market Title', 'Market Volume', 'Market End Date',
+                   'Status', 'Wikipedia URL'];
+
+  const rows = filteredResults.map(r => [
+    r.personName,
+    r.zodiacSign?.name || '',
+    r.zodiacSign?.symbol || '',
+    r.birthDate || '',
+    r.birthDateRaw || '',
+    r.probability?.toFixed(1) || '',
+    r.marketTitle,
+    r.marketVolume || '',
+    r.marketEndDate || '',
+    r.status,
+    r.wikipediaUrl || ''
+  ]);
+
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+  ].join('\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `polycrawler_${new Date().toISOString().split('T')[0]}.csv`;
+  link.click();
+}
+
+function copyToClipboard() {
+  const text = filteredResults.map(r =>
+    `${r.personName}\t${r.zodiacSign?.symbol || '-'} ${r.zodiacSign?.name || ''}\t${r.birthDate || '-'}\t${r.probability?.toFixed(1) || '-'}%\t${r.marketTitle}`
+  ).join('\n');
+
+  navigator.clipboard.writeText(text).then(() => {
+    elements.copyClipboard.textContent = 'Copied!';
+    setTimeout(() => {
+      elements.copyClipboard.textContent = 'Copy to Clipboard';
+    }, 2000);
+  });
+}
+
+async function exportToSheets() {
+  const url = elements.sheetsWebAppUrl.value.trim();
+  if (!url) return;
+
+  elements.exportToSheets.disabled = true;
+  elements.sheetsStatus.textContent = 'Exporting...';
+  elements.sheetsStatus.className = 'status-message';
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      mode: 'no-cors', // Google Apps Script doesn't support CORS properly
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ results: filteredResults })
+    });
+
+    // With no-cors, we can't read the response, but if it didn't throw, it likely worked
+    elements.sheetsStatus.textContent = 'Export sent! Check your Google Sheet.';
+    elements.sheetsStatus.className = 'status-message success';
+
+  } catch (error) {
+    elements.sheetsStatus.textContent = `Error: ${error.message}`;
+    elements.sheetsStatus.className = 'status-message error';
+  } finally {
+    elements.exportToSheets.disabled = false;
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
