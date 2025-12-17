@@ -388,21 +388,120 @@ function updateStats(stats) {
 }
 
 function renderResults() {
-  elements.resultsBody.innerHTML = filteredResults.map(r => `
-    <tr>
-      <td><strong>${escapeHtml(r.personName)}</strong></td>
-      <td>${r.birthDate || '-'}</td>
-      <td class="probability">${r.probability ? r.probability.toFixed(1) + '%' : '-'}</td>
-      <td class="market-title" title="${escapeHtml(r.marketTitle)}">${escapeHtml(r.marketTitle)}</td>
-      <td>${formatDeadline(r.marketEndDate)}</td>
-      <td><span class="status-badge ${getStatusClass(r.status)}">${r.status}</span></td>
-      <td class="link-cell">
-        ${r.wikipediaUrl ? `<a href="${r.wikipediaUrl}" target="_blank">Wikipedia</a>` : ''}
-        ${getMarketLink(r)}
-      </td>
-    </tr>
-  `).join('');
+  // Group results by market
+  const marketGroups = groupByMarket(filteredResults);
+
+  elements.resultsBody.innerHTML = marketGroups.map((group, idx) => {
+    const people = group.people;
+    const market = group.market;
+    const isMultiPerson = people.length > 1;
+
+    // Create header showing up to 3 names
+    const displayNames = people.slice(0, 3).map(p => p.personName);
+    const moreCount = people.length - 3;
+    const namesHeader = displayNames.join(', ') + (moreCount > 0 ? ` +${moreCount} more` : '');
+
+    // Summary stats for the group
+    const foundCount = people.filter(p => p.birthDate).length;
+
+    if (isMultiPerson) {
+      // Collapsible multi-person market
+      return `
+        <tr class="market-header" data-market-idx="${idx}" onclick="toggleMarket(${idx})">
+          <td class="expand-cell"><span class="expand-icon">▶</span></td>
+          <td><strong>${escapeHtml(namesHeader)}</strong></td>
+          <td class="found-summary">${foundCount}/${people.length} found</td>
+          <td class="market-title" title="${escapeHtml(market.title)}">${escapeHtml(market.title)}</td>
+          <td>${formatDeadline(market.endDate)}</td>
+          <td>${getMarketLinkFromGroup(market)}</td>
+        </tr>
+        ${people.map((p, pIdx) => `
+          <tr class="person-row collapsed" data-market-idx="${idx}">
+            <td></td>
+            <td class="person-name-cell">
+              ${p.wikipediaUrl ? `<a href="${p.wikipediaUrl}" target="_blank">${escapeHtml(p.personName)}</a>` : escapeHtml(p.personName)}
+            </td>
+            <td>${p.birthDate || '-'}</td>
+            <td class="probability">${p.probability ? p.probability.toFixed(1) + '%' : '-'}</td>
+            <td colspan="2"><span class="status-badge ${getStatusClass(p.status)}">${p.status}</span></td>
+          </tr>
+        `).join('')}
+      `;
+    } else {
+      // Single person - simple row
+      const p = people[0];
+      return `
+        <tr class="single-person-row">
+          <td></td>
+          <td>
+            <strong>
+              ${p.wikipediaUrl ? `<a href="${p.wikipediaUrl}" target="_blank">${escapeHtml(p.personName)}</a>` : escapeHtml(p.personName)}
+            </strong>
+          </td>
+          <td>${p.birthDate || '-'}</td>
+          <td class="market-title" title="${escapeHtml(market.title)}">${escapeHtml(market.title)}</td>
+          <td>${formatDeadline(market.endDate)}</td>
+          <td class="link-cell">
+            <span class="status-badge ${getStatusClass(p.status)}">${p.status}</span>
+            ${getMarketLinkFromGroup(market)}
+          </td>
+        </tr>
+      `;
+    }
+  }).join('');
 }
+
+function groupByMarket(results) {
+  const groups = new Map();
+
+  for (const r of results) {
+    const key = r.marketTitle;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        market: {
+          title: r.marketTitle,
+          slug: r.marketSlug,
+          conditionId: r.marketConditionId,
+          volume: r.marketVolume,
+          endDate: r.marketEndDate
+        },
+        people: []
+      });
+    }
+    groups.get(key).people.push(r);
+  }
+
+  return Array.from(groups.values());
+}
+
+function getMarketLinkFromGroup(market) {
+  if (market.slug) {
+    return `<a href="https://polymarket.com/event/${encodeURIComponent(market.slug)}" target="_blank">Market</a>`;
+  }
+  if (market.conditionId) {
+    return `<a href="https://polymarket.com/market/${encodeURIComponent(market.conditionId)}" target="_blank">Market</a>`;
+  }
+  return '';
+}
+
+// Global function for onclick handler
+window.toggleMarket = function(idx) {
+  const header = document.querySelector(`.market-header[data-market-idx="${idx}"]`);
+  const rows = document.querySelectorAll(`.person-row[data-market-idx="${idx}"]`);
+  const icon = header.querySelector('.expand-icon');
+
+  const isExpanded = header.classList.contains('expanded');
+
+  if (isExpanded) {
+    header.classList.remove('expanded');
+    icon.textContent = '▶';
+    rows.forEach(row => row.classList.add('collapsed'));
+  } else {
+    header.classList.add('expanded');
+    icon.textContent = '▼';
+    rows.forEach(row => row.classList.remove('collapsed'));
+  }
+};
 
 function formatDeadline(dateStr) {
   if (!dateStr) return '-';

@@ -313,6 +313,84 @@ tr:hover {
   color: var(--success);
 }
 
+/* Collapsible Market Rows */
+.expand-col {
+  width: 30px;
+}
+
+.expand-cell {
+  text-align: center;
+  cursor: pointer;
+}
+
+.expand-icon {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.market-header {
+  cursor: pointer;
+  background: var(--bg);
+}
+
+.market-header:hover {
+  background: var(--bg-hover);
+}
+
+.market-header.expanded {
+  background: var(--bg-hover);
+  border-bottom: 2px solid var(--primary);
+}
+
+.person-row {
+  background: var(--bg-card);
+}
+
+.person-row.collapsed {
+  display: none;
+}
+
+.person-row td {
+  padding-left: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.person-row:last-of-type td {
+  border-bottom: 2px solid var(--border);
+}
+
+.person-name-cell {
+  padding-left: 0.5rem;
+}
+
+.person-name-cell a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.person-name-cell a:hover {
+  text-decoration: underline;
+}
+
+.found-summary {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.single-person-row td:first-child {
+  width: 30px;
+}
+
+.single-person-row a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.single-person-row a:hover {
+  text-decoration: underline;
+}
+
 /* Modal */
 .modal {
   display: none;
