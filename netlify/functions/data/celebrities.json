@@ -1,8 +1,9 @@
 {
   "_metadata": {
     "description": "Pre-computed birth dates for frequently appearing public figures",
-    "lastUpdated": "2025-01-15",
-    "source": "Wikipedia"
+    "lastUpdated": "2025-12-17",
+    "source": "Wikipedia",
+    "totalEntries": 170
   },
   "celebrities": {
     "donald trump": {
@@ -471,6 +472,570 @@
       "birthDate": "June 7, 1959",
       "birthDateRaw": "1959-06-07",
       "wikipediaUrl": "https://en.wikipedia.org/wiki/Mike_Pence",
+      "confidence": 100
+    },
+    "tim walz": {
+      "birthDate": "April 6, 1964",
+      "birthDateRaw": "1964-04-06",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Tim_Walz",
+      "confidence": 100
+    },
+    "doug burgum": {
+      "birthDate": "August 1, 1956",
+      "birthDateRaw": "1956-08-01",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Doug_Burgum",
+      "confidence": 100
+    },
+    "marco rubio": {
+      "birthDate": "May 28, 1971",
+      "birthDateRaw": "1971-05-28",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Marco_Rubio",
+      "confidence": 100
+    },
+    "ted cruz": {
+      "birthDate": "December 22, 1970",
+      "birthDateRaw": "1970-12-22",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Ted_Cruz",
+      "confidence": 100
+    },
+    "rand paul": {
+      "birthDate": "January 7, 1963",
+      "birthDateRaw": "1963-01-07",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Rand_Paul",
+      "confidence": 100
+    },
+    "bernie sanders": {
+      "birthDate": "September 8, 1941",
+      "birthDateRaw": "1941-09-08",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Bernie_Sanders",
+      "confidence": 100
+    },
+    "elizabeth warren": {
+      "birthDate": "June 22, 1949",
+      "birthDateRaw": "1949-06-22",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Elizabeth_Warren",
+      "confidence": 100
+    },
+    "hillary clinton": {
+      "birthDate": "October 26, 1947",
+      "birthDateRaw": "1947-10-26",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Hillary_Clinton",
+      "confidence": 100
+    },
+    "bill clinton": {
+      "birthDate": "August 19, 1946",
+      "birthDateRaw": "1946-08-19",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Bill_Clinton",
+      "confidence": 100
+    },
+    "george w bush": {
+      "birthDate": "July 6, 1946",
+      "birthDateRaw": "1946-07-06",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/George_W._Bush",
+      "confidence": 100
+    },
+    "marjorie taylor greene": {
+      "birthDate": "May 27, 1974",
+      "birthDateRaw": "1974-05-27",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Marjorie_Taylor_Greene",
+      "confidence": 100
+    },
+    "matt gaetz": {
+      "birthDate": "May 7, 1982",
+      "birthDateRaw": "1982-05-07",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Matt_Gaetz",
+      "confidence": 100
+    },
+    "mike johnson": {
+      "birthDate": "January 30, 1972",
+      "birthDateRaw": "1972-01-30",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Mike_Johnson",
+      "confidence": 100
+    },
+    "hakeem jeffries": {
+      "birthDate": "August 4, 1970",
+      "birthDateRaw": "1970-08-04",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Hakeem_Jeffries",
+      "confidence": 100
+    },
+    "justin trudeau": {
+      "birthDate": "December 25, 1971",
+      "birthDateRaw": "1971-12-25",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Justin_Trudeau",
+      "confidence": 100
+    },
+    "pierre poilievre": {
+      "birthDate": "June 3, 1979",
+      "birthDateRaw": "1979-06-03",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Pierre_Poilievre",
+      "confidence": 100
+    },
+    "giorgia meloni": {
+      "birthDate": "January 15, 1977",
+      "birthDateRaw": "1977-01-15",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Giorgia_Meloni",
+      "confidence": 100
+    },
+    "marine le pen": {
+      "birthDate": "August 5, 1968",
+      "birthDateRaw": "1968-08-05",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Marine_Le_Pen",
+      "confidence": 100
+    },
+    "viktor orban": {
+      "birthDate": "May 31, 1963",
+      "birthDateRaw": "1963-05-31",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Viktor_Orb%C3%A1n",
+      "confidence": 100
+    },
+    "fumio kishida": {
+      "birthDate": "July 29, 1957",
+      "birthDateRaw": "1957-07-29",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Fumio_Kishida",
+      "confidence": 100
+    },
+    "yoon suk yeol": {
+      "birthDate": "December 18, 1960",
+      "birthDateRaw": "1960-12-18",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Yoon_Suk_Yeol",
+      "confidence": 100
+    },
+    "scott morrison": {
+      "birthDate": "May 13, 1968",
+      "birthDateRaw": "1968-05-13",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Scott_Morrison",
+      "confidence": 100
+    },
+    "anthony albanese": {
+      "birthDate": "March 2, 1963",
+      "birthDateRaw": "1963-03-02",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Anthony_Albanese",
+      "confidence": 100
+    },
+    "sam bankman-fried": {
+      "birthDate": "March 6, 1992",
+      "birthDateRaw": "1992-03-06",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Sam_Bankman-Fried",
+      "confidence": 100
+    },
+    "caroline ellison": {
+      "birthDate": "1994",
+      "birthDateRaw": "1994",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Caroline_Ellison",
+      "confidence": 60
+    },
+    "gary gensler": {
+      "birthDate": "October 18, 1957",
+      "birthDateRaw": "1957-10-18",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Gary_Gensler",
+      "confidence": 100
+    },
+    "do kwon": {
+      "birthDate": "September 6, 1991",
+      "birthDateRaw": "1991-09-06",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Do_Kwon",
+      "confidence": 100
+    },
+    "ariana grande": {
+      "birthDate": "June 26, 1993",
+      "birthDateRaw": "1993-06-26",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Ariana_Grande",
+      "confidence": 100
+    },
+    "dua lipa": {
+      "birthDate": "August 22, 1995",
+      "birthDateRaw": "1995-08-22",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Dua_Lipa",
+      "confidence": 100
+    },
+    "billie eilish": {
+      "birthDate": "December 18, 2001",
+      "birthDateRaw": "2001-12-18",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Billie_Eilish",
+      "confidence": 100
+    },
+    "bad bunny": {
+      "birthDate": "March 10, 1994",
+      "birthDateRaw": "1994-03-10",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Bad_Bunny",
+      "confidence": 100
+    },
+    "kendrick lamar": {
+      "birthDate": "June 17, 1987",
+      "birthDateRaw": "1987-06-17",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Kendrick_Lamar",
+      "confidence": 100
+    },
+    "rihanna": {
+      "birthDate": "February 20, 1988",
+      "birthDateRaw": "1988-02-20",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Rihanna",
+      "confidence": 100
+    },
+    "justin bieber": {
+      "birthDate": "March 1, 1994",
+      "birthDateRaw": "1994-03-01",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Justin_Bieber",
+      "confidence": 100
+    },
+    "selena gomez": {
+      "birthDate": "July 22, 1992",
+      "birthDateRaw": "1992-07-22",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Selena_Gomez",
+      "confidence": 100
+    },
+    "kim kardashian": {
+      "birthDate": "October 21, 1980",
+      "birthDateRaw": "1980-10-21",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Kim_Kardashian",
+      "confidence": 100
+    },
+    "kylie jenner": {
+      "birthDate": "August 10, 1997",
+      "birthDateRaw": "1997-08-10",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Kylie_Jenner",
+      "confidence": 100
+    },
+    "mrbeast": {
+      "birthDate": "May 7, 1998",
+      "birthDateRaw": "1998-05-07",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/MrBeast",
+      "confidence": 100
+    },
+    "pewdiepie": {
+      "birthDate": "October 24, 1989",
+      "birthDateRaw": "1989-10-24",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/PewDiePie",
+      "confidence": 100
+    },
+    "logan paul": {
+      "birthDate": "April 1, 1995",
+      "birthDateRaw": "1995-04-01",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Logan_Paul",
+      "confidence": 100
+    },
+    "jake paul": {
+      "birthDate": "January 17, 1997",
+      "birthDateRaw": "1997-01-17",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Jake_Paul",
+      "confidence": 100
+    },
+    "andrew tate": {
+      "birthDate": "December 1, 1986",
+      "birthDateRaw": "1986-12-01",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Andrew_Tate",
+      "confidence": 100
+    },
+    "jordan peterson": {
+      "birthDate": "June 12, 1962",
+      "birthDateRaw": "1962-06-12",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Jordan_Peterson",
+      "confidence": 100
+    },
+    "ben shapiro": {
+      "birthDate": "January 15, 1984",
+      "birthDateRaw": "1984-01-15",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Ben_Shapiro",
+      "confidence": 100
+    },
+    "alex jones": {
+      "birthDate": "February 11, 1974",
+      "birthDateRaw": "1974-02-11",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Alex_Jones",
+      "confidence": 100
+    },
+    "prince william": {
+      "birthDate": "June 21, 1982",
+      "birthDateRaw": "1982-06-21",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/William,_Prince_of_Wales",
+      "confidence": 100
+    },
+    "kate middleton": {
+      "birthDate": "January 9, 1982",
+      "birthDateRaw": "1982-01-09",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Catherine,_Princess_of_Wales",
+      "confidence": 100
+    },
+    "queen elizabeth ii": {
+      "birthDate": "April 21, 1926",
+      "birthDateRaw": "1926-04-21",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Elizabeth_II",
+      "confidence": 100
+    },
+    "stephen curry": {
+      "birthDate": "March 14, 1988",
+      "birthDateRaw": "1988-03-14",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Stephen_Curry",
+      "confidence": 100
+    },
+    "kevin durant": {
+      "birthDate": "September 29, 1988",
+      "birthDateRaw": "1988-09-29",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Kevin_Durant",
+      "confidence": 100
+    },
+    "giannis antetokounmpo": {
+      "birthDate": "December 6, 1994",
+      "birthDateRaw": "1994-12-06",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Giannis_Antetokounmpo",
+      "confidence": 100
+    },
+    "luka doncic": {
+      "birthDate": "February 28, 1999",
+      "birthDateRaw": "1999-02-28",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Luka_Don%C4%8Di%C4%87",
+      "confidence": 100
+    },
+    "josh allen": {
+      "birthDate": "May 21, 1996",
+      "birthDateRaw": "1996-05-21",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Josh_Allen_(quarterback)",
+      "confidence": 100
+    },
+    "lamar jackson": {
+      "birthDate": "January 7, 1997",
+      "birthDateRaw": "1997-01-07",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Lamar_Jackson",
+      "confidence": 100
+    },
+    "joe burrow": {
+      "birthDate": "December 10, 1996",
+      "birthDateRaw": "1996-12-10",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Joe_Burrow",
+      "confidence": 100
+    },
+    "aaron rodgers": {
+      "birthDate": "December 2, 1983",
+      "birthDateRaw": "1983-12-02",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Aaron_Rodgers",
+      "confidence": 100
+    },
+    "russell wilson": {
+      "birthDate": "November 29, 1988",
+      "birthDateRaw": "1988-11-29",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Russell_Wilson",
+      "confidence": 100
+    },
+    "mike trout": {
+      "birthDate": "August 7, 1991",
+      "birthDateRaw": "1991-08-07",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Mike_Trout",
+      "confidence": 100
+    },
+    "mookie betts": {
+      "birthDate": "October 7, 1992",
+      "birthDateRaw": "1992-10-07",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Mookie_Betts",
+      "confidence": 100
+    },
+    "connor mcdavid": {
+      "birthDate": "January 13, 1997",
+      "birthDateRaw": "1997-01-13",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Connor_McDavid",
+      "confidence": 100
+    },
+    "rafael nadal": {
+      "birthDate": "June 3, 1986",
+      "birthDateRaw": "1986-06-03",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Rafael_Nadal",
+      "confidence": 100
+    },
+    "roger federer": {
+      "birthDate": "August 8, 1981",
+      "birthDateRaw": "1981-08-08",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Roger_Federer",
+      "confidence": 100
+    },
+    "carlos alcaraz": {
+      "birthDate": "May 5, 2003",
+      "birthDateRaw": "2003-05-05",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Carlos_Alcaraz",
+      "confidence": 100
+    },
+    "jannik sinner": {
+      "birthDate": "August 16, 2001",
+      "birthDateRaw": "2001-08-16",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Jannik_Sinner",
+      "confidence": 100
+    },
+    "tiger woods": {
+      "birthDate": "December 30, 1975",
+      "birthDateRaw": "1975-12-30",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Tiger_Woods",
+      "confidence": 100
+    },
+    "rory mcilroy": {
+      "birthDate": "May 4, 1989",
+      "birthDateRaw": "1989-05-04",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Rory_McIlroy",
+      "confidence": 100
+    },
+    "max verstappen": {
+      "birthDate": "September 30, 1997",
+      "birthDateRaw": "1997-09-30",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Max_Verstappen",
+      "confidence": 100
+    },
+    "lewis hamilton": {
+      "birthDate": "January 7, 1985",
+      "birthDateRaw": "1985-01-07",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Lewis_Hamilton",
+      "confidence": 100
+    },
+    "kylian mbappe": {
+      "birthDate": "December 20, 1998",
+      "birthDateRaw": "1998-12-20",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Kylian_Mbapp%C3%A9",
+      "confidence": 100
+    },
+    "erling haaland": {
+      "birthDate": "July 21, 2000",
+      "birthDateRaw": "2000-07-21",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Erling_Haaland",
+      "confidence": 100
+    },
+    "neymar": {
+      "birthDate": "February 5, 1992",
+      "birthDateRaw": "1992-02-05",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Neymar",
+      "confidence": 100
+    },
+    "conor mcgregor": {
+      "birthDate": "July 14, 1988",
+      "birthDateRaw": "1988-07-14",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Conor_McGregor",
+      "confidence": 100
+    },
+    "jon jones": {
+      "birthDate": "July 19, 1987",
+      "birthDateRaw": "1987-07-19",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Jon_Jones",
+      "confidence": 100
+    },
+    "tyson fury": {
+      "birthDate": "August 12, 1988",
+      "birthDateRaw": "1988-08-12",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Tyson_Fury",
+      "confidence": 100
+    },
+    "reid hoffman": {
+      "birthDate": "August 5, 1967",
+      "birthDateRaw": "1967-08-05",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Reid_Hoffman",
+      "confidence": 100
+    },
+    "peter thiel": {
+      "birthDate": "October 11, 1967",
+      "birthDateRaw": "1967-10-11",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Peter_Thiel",
+      "confidence": 100
+    },
+    "marc andreessen": {
+      "birthDate": "July 9, 1971",
+      "birthDateRaw": "1971-07-09",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Marc_Andreessen",
+      "confidence": 100
+    },
+    "jack dorsey": {
+      "birthDate": "November 19, 1976",
+      "birthDateRaw": "1976-11-19",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Jack_Dorsey",
+      "confidence": 100
+    },
+    "travis kalanick": {
+      "birthDate": "August 6, 1976",
+      "birthDateRaw": "1976-08-06",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Travis_Kalanick",
+      "confidence": 100
+    },
+    "sheryl sandberg": {
+      "birthDate": "August 28, 1969",
+      "birthDateRaw": "1969-08-28",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Sheryl_Sandberg",
+      "confidence": 100
+    },
+    "susan wojcicki": {
+      "birthDate": "July 5, 1968",
+      "birthDateRaw": "1968-07-05",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Susan_Wojcicki",
+      "confidence": 100
+    },
+    "lisa su": {
+      "birthDate": "November 7, 1969",
+      "birthDateRaw": "1969-11-07",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Lisa_Su",
+      "confidence": 100
+    },
+    "pat gelsinger": {
+      "birthDate": "February 5, 1961",
+      "birthDateRaw": "1961-02-05",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Pat_Gelsinger",
+      "confidence": 100
+    },
+    "arvind krishna": {
+      "birthDate": "1962",
+      "birthDateRaw": "1962",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Arvind_Krishna",
+      "confidence": 60
+    },
+    "daniel ek": {
+      "birthDate": "February 21, 1983",
+      "birthDateRaw": "1983-02-21",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Daniel_Ek",
+      "confidence": 100
+    },
+    "evan spiegel": {
+      "birthDate": "June 4, 1990",
+      "birthDateRaw": "1990-06-04",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Evan_Spiegel",
+      "confidence": 100
+    },
+    "whitney wolfe herd": {
+      "birthDate": "July 1, 1989",
+      "birthDateRaw": "1989-07-01",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Whitney_Wolfe_Herd",
+      "confidence": 100
+    },
+    "george soros": {
+      "birthDate": "August 12, 1930",
+      "birthDateRaw": "1930-08-12",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/George_Soros",
+      "confidence": 100
+    },
+    "ray dalio": {
+      "birthDate": "August 8, 1949",
+      "birthDateRaw": "1949-08-08",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Ray_Dalio",
+      "confidence": 100
+    },
+    "ken griffin": {
+      "birthDate": "October 15, 1968",
+      "birthDateRaw": "1968-10-15",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Kenneth_C._Griffin",
+      "confidence": 100
+    },
+    "steve cohen": {
+      "birthDate": "June 11, 1956",
+      "birthDateRaw": "1956-06-11",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Steven_A._Cohen",
+      "confidence": 100
+    },
+    "carl icahn": {
+      "birthDate": "February 16, 1936",
+      "birthDateRaw": "1936-02-16",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Carl_Icahn",
+      "confidence": 100
+    },
+    "bill ackman": {
+      "birthDate": "May 11, 1966",
+      "birthDateRaw": "1966-05-11",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Bill_Ackman",
+      "confidence": 100
+    },
+    "charlie munger": {
+      "birthDate": "January 1, 1924",
+      "birthDateRaw": "1924-01-01",
+      "wikipediaUrl": "https://en.wikipedia.org/wiki/Charlie_Munger",
       "confidence": 100
     }
   }
