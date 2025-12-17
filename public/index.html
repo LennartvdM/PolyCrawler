@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PolyCrawler - Polymarket Birth Date Extractor</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔮</text></svg>">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🔮 PolyCrawler</h1>
+      <p class="subtitle">Extract birth dates from Polymarket contenders for horoscope analysis</p>
+    </header>
+
+    <section class="controls">
+      <div class="control-group">
+        <label for="marketLimit">Markets to fetch:</label>
+        <input type="number" id="marketLimit" value="50" min="1" max="200">
+      </div>
+      <div class="control-group">
+        <label for="topContenders">Top contenders per market:</label>
+        <input type="number" id="topContenders" value="4" min="1" max="10">
+      </div>
+      <button id="runCrawl" class="btn-primary">
+        <span class="btn-text">Run Crawl</span>
+        <span class="btn-loading" style="display:none;">Crawling...</span>
+      </button>
+    </section>
+
+    <section class="stats" id="stats" style="display:none;">
+      <div class="stat-card">
+        <span class="stat-value" id="statMarkets">0</span>
+        <span class="stat-label">Markets</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value" id="statContenders">0</span>
+        <span class="stat-label">Contenders</span>
+      </div>
+      <div class="stat-card success">
+        <span class="stat-value" id="statFound">0</span>
+        <span class="stat-label">Birth Dates Found</span>
+      </div>
+      <div class="stat-card warning">
+        <span class="stat-value" id="statNoWiki">0</span>
+        <span class="stat-label">No Wikipedia</span>
+      </div>
+      <div class="stat-card info">
+        <span class="stat-value" id="statNoDate">0</span>
+        <span class="stat-label">No Birth Date</span>
+      </div>
+    </section>
+
+    <section class="actions" id="actions" style="display:none;">
+      <div class="filter-group">
+        <input type="text" id="filterInput" placeholder="Filter by name or market...">
+        <select id="filterStatus">
+          <option value="all">All Statuses</option>
+          <option value="found">Birth Date Found</option>
+          <option value="no-date">No Birth Date</option>
+          <option value="no-wiki">No Wikipedia</option>
+        </select>
+        <select id="filterZodiac">
+          <option value="all">All Signs</option>
+          <option value="Aries">♈ Aries</option>
+          <option value="Taurus">♉ Taurus</option>
+          <option value="Gemini">♊ Gemini</option>
+          <option value="Cancer">♋ Cancer</option>
+          <option value="Leo">♌ Leo</option>
+          <option value="Virgo">♍ Virgo</option>
+          <option value="Libra">♎ Libra</option>
+          <option value="Scorpio">♏ Scorpio</option>
+          <option value="Sagittarius">♐ Sagittarius</option>
+          <option value="Capricorn">♑ Capricorn</option>
+          <option value="Aquarius">♒ Aquarius</option>
+          <option value="Pisces">♓ Pisces</option>
+        </select>
+      </div>
+      <div class="export-group">
+        <button id="exportCsv" class="btn-secondary">Export CSV</button>
+        <button id="copyClipboard" class="btn-secondary">Copy to Clipboard</button>
+        <button id="openSheetsConfig" class="btn-secondary">Google Sheets</button>
+      </div>
+    </section>
+
+    <section class="results" id="results">
+      <div class="empty-state" id="emptyState">
+        <p>Click "Run Crawl" to fetch Polymarket markets and extract birth dates from Wikipedia</p>
+      </div>
+      <div class="table-container" id="tableContainer" style="display:none;">
+        <table id="resultsTable">
+          <thead>
+            <tr>
+              <th data-sort="personName">Person</th>
+              <th data-sort="zodiacSign">Sign</th>
+              <th data-sort="birthDate">Birth Date</th>
+              <th data-sort="probability">Odds</th>
+              <th data-sort="marketTitle">Market</th>
+              <th data-sort="status">Status</th>
+              <th>Links</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Google Sheets Modal -->
+    <div class="modal" id="sheetsModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Google Sheets Export</h2>
+          <button class="modal-close" id="closeModal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-info">To export directly to Google Sheets, you'll need to set up a Google Apps Script web app. Here's how:</p>
+
+          <div class="setup-steps">
+            <h3>Quick Setup:</h3>
+            <ol>
+              <li>Create a new Google Sheet</li>
+              <li>Go to Extensions → Apps Script</li>
+              <li>Paste the code below and deploy as web app</li>
+              <li>Enter the web app URL here</li>
+            </ol>
+          </div>
+
+          <details class="code-details">
+            <summary>Google Apps Script Code (click to expand)</summary>
+            <pre id="appsScriptCode"></pre>
+            <button class="btn-small" id="copyAppsScript">Copy Code</button>
+          </details>
+
+          <div class="form-group">
+            <label for="sheetsWebAppUrl">Google Apps Script Web App URL:</label>
+            <input type="url" id="sheetsWebAppUrl" placeholder="https://script.google.com/macros/s/.../exec">
+          </div>
+
+          <button id="exportToSheets" class="btn-primary" disabled>Export to Google Sheets</button>
+          <p class="status-message" id="sheetsStatus"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>Data from <a href="https://polymarket.com" target="_blank">Polymarket</a> and <a href="https://wikipedia.org" target="_blank">Wikipedia</a>. For horoscope research only.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
