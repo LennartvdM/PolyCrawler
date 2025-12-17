@@ -191,83 +191,148 @@ function setupEventListeners() {
 async function runCrawl() {
   const limit = parseInt(elements.marketLimit.value) || 50;
   const top = parseInt(elements.topContenders.value) || 4;
+  const BATCH_SIZE = 5; // Look up 5 people per request
 
   // Update UI
   elements.runCrawl.disabled = true;
   elements.btnText.style.display = 'none';
   elements.btnLoading.style.display = 'inline';
-  elements.emptyState.innerHTML = '<p>Fetching markets and looking up birth dates...</p>';
+  elements.emptyState.innerHTML = '<p>Fetching markets...</p>';
+  elements.stats.style.display = 'flex';
+  elements.tableContainer.style.display = 'block';
 
-  // Clear previous logs and add start message
+  // Clear previous results and logs
+  crawlResults = [];
+  filteredResults = [];
   crawlLogs = [];
-  addLocalLog('INFO', 'Starting crawl...', { limit, top });
+  const wikiResults = new Map(); // nameKey -> wiki result
+  let peopleData = []; // Store people with their market associations
+
+  addLocalLog('INFO', 'Starting chunked crawl...', { limit, top });
   renderLogs();
+  renderResults();
 
   try {
-    addLocalLog('INFO', 'Sending request to /api/crawl');
+    // Phase 1: Fetch markets and get list of people
+    addLocalLog('INFO', 'Phase 1: Fetching markets...');
+    elements.emptyState.innerHTML = '<p>Fetching markets and extracting names...</p>';
 
-    const response = await fetch(`/api/crawl?limit=${limit}&top=${top}`);
-    addLocalLog('INFO', 'Response received', { status: response.status, statusText: response.statusText });
+    const marketsResponse = await fetch(`/api/crawl?phase=markets&limit=${limit}&top=${top}`);
+    const marketsData = await marketsResponse.json();
 
-    const data = await response.json();
-
-    // Merge server logs
-    if (data.logs && Array.isArray(data.logs)) {
-      crawlLogs = [...crawlLogs, ...data.logs];
+    if (marketsData.logs) {
+      crawlLogs = [...crawlLogs, ...marketsData.logs];
       renderLogs();
     }
 
-    if (!data.success) {
-      addLocalLog('ERROR', 'Crawl failed', { error: data.error });
-      throw new Error(data.error || 'Crawl failed');
+    if (!marketsData.success) {
+      throw new Error(marketsData.error || 'Failed to fetch markets');
     }
 
-    crawlResults = data.results || [];
-    filteredResults = [...crawlResults];
+    peopleData = marketsData.people || [];
+    const totalPeople = peopleData.length;
 
-    addLocalLog('INFO', 'Crawl completed successfully', {
-      resultsCount: crawlResults.length,
-      stats: data.stats
+    addLocalLog('INFO', 'Markets fetched', {
+      markets: marketsData.markets?.length || 0,
+      uniquePeople: totalPeople
     });
 
-    // Update stats
-    if (data.stats) {
-      updateStats(data.stats);
-    } else {
-      updateStats({
-        totalMarkets: 0,
-        totalContenders: crawlResults.length,
-        birthDatesFound: crawlResults.filter(r => r.birthDate).length,
-        wikipediaNotFound: crawlResults.filter(r => !r.found).length,
-        birthDateMissing: crawlResults.filter(r => r.found && !r.birthDate).length
-      });
+    if (totalPeople === 0) {
+      elements.emptyState.innerHTML = '<p style="color: var(--warning);">No people found in markets.</p>';
+      return;
     }
 
-    // Show results
-    renderResults();
+    // Phase 2: Look up people in batches, showing results progressively
+    const names = peopleData.map(p => p.name);
+    let lookedUp = 0;
 
-    elements.stats.style.display = 'flex';
-    elements.actions.style.display = 'flex';
+    for (let i = 0; i < names.length; i += BATCH_SIZE) {
+      const batch = names.slice(i, i + BATCH_SIZE);
+      const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(names.length / BATCH_SIZE);
 
-    if (crawlResults.length > 0) {
-      elements.emptyState.style.display = 'none';
-      elements.tableContainer.style.display = 'block';
-    } else {
-      elements.emptyState.innerHTML = '<p style="color: var(--warning);">No person contenders found in the fetched markets. Check the logs below for details.</p>';
-      elements.emptyState.style.display = 'block';
-      elements.tableContainer.style.display = 'none';
+      elements.emptyState.innerHTML = `<p>Looking up Wikipedia... (${lookedUp}/${totalPeople} people)</p>`;
+      addLocalLog('INFO', `Looking up batch ${batchNum}/${totalBatches}`, { names: batch });
+
+      try {
+        const lookupResponse = await fetch(`/api/crawl?phase=lookup&names=${encodeURIComponent(JSON.stringify(batch))}`);
+        const lookupData = await lookupResponse.json();
+
+        if (lookupData.logs) {
+          crawlLogs = [...crawlLogs, ...lookupData.logs];
+          renderLogs();
+        }
+
+        if (lookupData.success && lookupData.results) {
+          for (const result of lookupData.results) {
+            wikiResults.set(result.name.toLowerCase(), result);
+          }
+          lookedUp += batch.length;
+
+          // Rebuild and display results progressively
+          rebuildResults(peopleData, wikiResults);
+          updateStatsFromResults();
+          renderResults();
+        }
+      } catch (batchError) {
+        addLocalLog('WARN', `Batch ${batchNum} failed`, { error: batchError.message });
+        // Continue with next batch
+      }
     }
+
+    // Final update
+    elements.emptyState.style.display = 'none';
+    addLocalLog('INFO', 'Crawl completed', {
+      totalPeople: crawlResults.length,
+      birthDatesFound: crawlResults.filter(r => r.birthDate).length
+    });
 
   } catch (error) {
     console.error('Crawl error:', error);
-    addLocalLog('ERROR', 'Client-side error', { message: error.message, stack: error.stack });
-    elements.emptyState.innerHTML = `<p style="color: var(--danger);">Error: ${error.message}</p><p style="color: var(--text-muted); margin-top: 0.5rem;">Check the logs below for more details.</p>`;
+    addLocalLog('ERROR', 'Crawl failed', { message: error.message });
+    elements.emptyState.innerHTML = `<p style="color: var(--danger);">Error: ${error.message}</p>`;
+    elements.emptyState.style.display = 'block';
   } finally {
     elements.runCrawl.disabled = false;
     elements.btnText.style.display = 'inline';
     elements.btnLoading.style.display = 'none';
+    elements.actions.style.display = 'flex';
     renderLogs();
   }
+}
+
+function rebuildResults(peopleData, wikiResults) {
+  crawlResults = [];
+
+  for (const person of peopleData) {
+    const wikiResult = wikiResults.get(person.nameKey);
+
+    for (const market of person.markets) {
+      crawlResults.push({
+        marketTitle: market.title,
+        marketSlug: market.slug,
+        marketConditionId: market.conditionId,
+        marketVolume: market.volume,
+        marketEndDate: market.endDate,
+        personName: person.name,
+        probability: market.probability,
+        nameSource: market.source,
+        ...(wikiResult || { found: false, status: 'Pending...' })
+      });
+    }
+  }
+
+  filteredResults = [...crawlResults];
+}
+
+function updateStatsFromResults() {
+  updateStats({
+    totalMarkets: new Set(crawlResults.map(r => r.marketTitle)).size,
+    totalPeople: crawlResults.length,
+    birthDatesFound: crawlResults.filter(r => r.birthDate).length,
+    wikipediaNotFound: crawlResults.filter(r => r.status && r.status.includes('not found')).length,
+    birthDateMissing: crawlResults.filter(r => r.found && !r.birthDate).length
+  });
 }
 
 function addLocalLog(level, message, data = null) {
