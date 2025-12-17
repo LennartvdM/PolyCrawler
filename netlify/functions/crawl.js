@@ -1,6 +1,6 @@
 /**
  * Netlify Function: Full crawl - fetch markets and lookup all Wikipedia birth dates
- * Returns detailed logs for debugging
+ * Extracts person names from BOTH market titles AND outcomes
  */
 
 export default async (request, context) => {
@@ -23,10 +23,10 @@ export default async (request, context) => {
   log('INFO', 'Crawl started', { limit, topN });
 
   try {
-    // Fetch markets from multiple sources to find person-based markets
+    // Fetch markets from multiple sources
     const allMarkets = [];
 
-    // Strategy 1: Fetch from events endpoint (grouped markets often have person contenders)
+    // Strategy 1: Fetch from events endpoint
     log('INFO', 'Fetching events from Polymarket API');
     try {
       const eventsUrl = `https://gamma-api.polymarket.com/events?limit=${limit}&active=true&closed=false`;
@@ -38,7 +38,6 @@ export default async (request, context) => {
         const events = await eventsResponse.json();
         log('INFO', 'Events fetched', { count: events.length });
 
-        // Extract markets from events
         for (const event of events) {
           if (event.markets && Array.isArray(event.markets)) {
             for (const market of event.markets) {
@@ -53,7 +52,7 @@ export default async (request, context) => {
       log('WARN', 'Events fetch failed, continuing with markets endpoint', { error: e.message });
     }
 
-    // Strategy 2: Fetch regular markets endpoint with higher limit
+    // Strategy 2: Fetch regular markets endpoint
     log('INFO', 'Fetching markets from Polymarket API');
     const apiUrl = `https://gamma-api.polymarket.com/markets?limit=${Math.max(limit, 200)}&active=true&closed=false`;
 
@@ -86,89 +85,80 @@ export default async (request, context) => {
 
     log('INFO', 'Total unique markets to process', { count: allMarkets.length });
 
-    // Pre-filter: Only consider markets with >2 outcomes (multi-option = likely person-based)
-    const multiOptionMarkets = allMarkets.filter(market => {
-      let outcomeCount = 0;
-
-      if (market.tokens && Array.isArray(market.tokens)) {
-        outcomeCount = market.tokens.length;
-      } else if (market.outcomes) {
-        let outcomes = market.outcomes;
-        if (typeof outcomes === 'string') {
-          try { outcomes = JSON.parse(outcomes); } catch { outcomes = []; }
-        }
-        outcomeCount = Array.isArray(outcomes) ? outcomes.length : 0;
-      }
-
-      return outcomeCount > 2;
-    });
-
-    log('INFO', 'Multi-option markets (>2 outcomes)', {
-      count: multiOptionMarkets.length,
-      examples: multiOptionMarkets.slice(0, 5).map(m => ({
-        question: m.question || m.title,
-        outcomeCount: m.tokens?.length || (typeof m.outcomes === 'string' ? JSON.parse(m.outcomes || '[]').length : m.outcomes?.length)
-      }))
-    });
-
-    // Process markets
+    // Process ALL markets - extract names from both titles and outcomes
     const markets = [];
     const skippedMarkets = [];
 
-    for (const market of multiOptionMarkets) {
-      const processed = extractContenders(market, topN, log);
-      if (processed.contenders.length > 0) {
+    for (const market of allMarkets) {
+      const processed = extractPeopleFromMarket(market, topN, log);
+      if (processed.people.length > 0) {
         markets.push(processed);
-        log('DEBUG', 'Found market with person contenders', {
+        log('DEBUG', 'Found market with people', {
           title: processed.title.substring(0, 60),
-          contenders: processed.contenders.map(c => c.name)
+          people: processed.people.map(p => `${p.name} (${p.source})`)
         });
       } else {
         skippedMarkets.push({
           title: market.question || market.title || 'Unknown',
-          reason: processed.skipReason || 'No person contenders found'
+          reason: processed.skipReason || 'No people found'
         });
       }
     }
 
     log('INFO', 'Markets processed', {
-      marketsWithContenders: markets.length,
+      marketsWithPeople: markets.length,
       skippedMarkets: skippedMarkets.length,
       skippedExamples: skippedMarkets.slice(0, 5)
     });
 
-    if (markets.length === 0) {
-      log('WARN', 'No markets with person contenders found', {
-        totalRawMarkets: allMarkets.length,
-        multiOptionMarkets: multiOptionMarkets.length,
-        skippedReasons: skippedMarkets.slice(0, 10)
-      });
-    }
-
-    // Step 2: Look up each contender on Wikipedia
+    // Step 2: Look up each person on Wikipedia (deduplicated)
     const results = [];
+    const lookedUp = new Set(); // Track names we've already looked up
     let wikiLookupCount = 0;
-    const totalContenders = markets.reduce((sum, m) => sum + m.contenders.length, 0);
+    const totalPeople = markets.reduce((sum, m) => sum + m.people.length, 0);
 
-    log('INFO', 'Starting Wikipedia lookups', { totalContenders });
+    log('INFO', 'Starting Wikipedia lookups', { totalPeople });
 
     for (const market of markets) {
-      for (const contender of market.contenders) {
+      for (const person of market.people) {
+        // Skip if we've already looked up this exact name
+        const nameKey = person.name.toLowerCase();
+        if (lookedUp.has(nameKey)) {
+          // Still add the result but mark as duplicate
+          const existingResult = results.find(r => r.personName.toLowerCase() === nameKey);
+          if (existingResult) {
+            results.push({
+              ...existingResult,
+              marketTitle: market.title,
+              marketSlug: market.slug,
+              marketVolume: market.volume,
+              marketEndDate: market.endDate,
+              probability: person.probability,
+              nameSource: person.source
+            });
+          }
+          continue;
+        }
+
+        lookedUp.add(nameKey);
         wikiLookupCount++;
-        log('DEBUG', `Looking up contender ${wikiLookupCount}/${totalContenders}`, {
-          name: contender.name,
+
+        log('DEBUG', `Looking up person ${wikiLookupCount}/${totalPeople}`, {
+          name: person.name,
+          source: person.source,
           market: market.title.substring(0, 50)
         });
 
-        const wikiResult = await lookupPerson(contender.name, log);
+        const wikiResult = await lookupPerson(person.name, log);
 
         results.push({
           marketTitle: market.title,
           marketSlug: market.slug,
           marketVolume: market.volume,
           marketEndDate: market.endDate,
-          personName: contender.name,
-          probability: contender.probability,
+          personName: person.name,
+          probability: person.probability,
+          nameSource: person.source,
           ...wikiResult
         });
       }
@@ -177,7 +167,8 @@ export default async (request, context) => {
     // Calculate stats
     const stats = {
       totalMarkets: markets.length,
-      totalContenders: results.length,
+      totalPeople: results.length,
+      uniquePeople: lookedUp.size,
       birthDatesFound: results.filter(r => r.birthDate).length,
       wikipediaNotFound: results.filter(r => !r.found).length,
       birthDateMissing: results.filter(r => r.found && !r.birthDate).length
@@ -209,14 +200,51 @@ export default async (request, context) => {
   }
 };
 
-function extractContenders(market, topN, log) {
+/**
+ * Extract people from a market - both from title AND outcomes
+ */
+function extractPeopleFromMarket(market, topN, log) {
   const title = market.question || market.title || 'Unknown';
   const slug = market.slug || '';
   const volume = parseFloat(market.volume || 0);
   const endDate = market.endDate || market.end_date_iso || null;
 
-  let outcomes = [];
+  const people = [];
+  const seenNames = new Set();
+
+  // Strategy 1: Extract names from outcomes (for multi-option markets)
+  const outcomeNames = extractFromOutcomes(market, topN);
+  for (const { name, probability } of outcomeNames) {
+    const normalized = name.toLowerCase();
+    if (!seenNames.has(normalized)) {
+      seenNames.add(normalized);
+      people.push({ name, probability, source: 'outcome' });
+    }
+  }
+
+  // Strategy 2: Extract names from market title/question
+  const titleNames = extractNamesFromText(title);
+  for (const name of titleNames) {
+    const normalized = name.toLowerCase();
+    if (!seenNames.has(normalized)) {
+      seenNames.add(normalized);
+      people.push({ name, probability: null, source: 'title' });
+    }
+  }
+
   let skipReason = null;
+  if (people.length === 0) {
+    skipReason = 'No person names found in title or outcomes';
+  }
+
+  return { title, slug, volume, endDate, people, skipReason };
+}
+
+/**
+ * Extract person names from market outcomes
+ */
+function extractFromOutcomes(market, topN) {
+  let outcomes = [];
 
   if (market.tokens && market.tokens.length > 0) {
     for (const token of market.tokens) {
@@ -242,74 +270,128 @@ function extractContenders(market, topN, log) {
         probability: parseFloat(prices[i] || 0) * 100
       });
     }
-  } else {
-    skipReason = 'No tokens or outcomes in market data';
   }
 
-  if (outcomes.length === 0) {
-    skipReason = skipReason || 'Empty outcomes array';
-    return { title, slug, volume, endDate, contenders: [], skipReason };
-  }
-
+  // Sort by probability and take top N
   outcomes.sort((a, b) => b.probability - a.probability);
   const topOutcomes = outcomes.slice(0, topN);
 
-  const contenders = [];
-  const rejectedOutcomes = [];
-
-  for (const o of topOutcomes) {
-    if (!o.name) {
-      rejectedOutcomes.push({ name: '(empty)', reason: 'Empty name' });
-      continue;
-    }
-
-    const nameCheck = checkPersonName(o.name);
-    if (nameCheck.isValid) {
-      contenders.push({ name: o.name, probability: o.probability });
-    } else {
-      rejectedOutcomes.push({ name: o.name, reason: nameCheck.reason });
-    }
-  }
-
-  if (contenders.length === 0 && rejectedOutcomes.length > 0) {
-    skipReason = `All outcomes rejected: ${rejectedOutcomes.map(r => `"${r.name}" (${r.reason})`).join(', ')}`;
-  }
-
-  return { title, slug, volume, endDate, contenders, skipReason, rejectedOutcomes };
+  // Filter to only valid person names
+  return topOutcomes.filter(o => o.name && isPersonName(o.name));
 }
 
-function checkPersonName(name) {
+/**
+ * Extract potential person names from free text (market titles)
+ */
+function extractNamesFromText(text) {
+  const names = [];
+
+  // Known political/public figures - common in Polymarket
+  const knownFigures = [
+    'Trump', 'Biden', 'Obama', 'Putin', 'Xi Jinping', 'Zelensky', 'Macron', 'Scholz',
+    'Netanyahu', 'Khamenei', 'Kim Jong Un', 'Modi', 'Erdogan', 'Lula', 'Milei',
+    'Musk', 'Bezos', 'Zuckerberg', 'Altman', 'SBF', 'CZ',
+    'Taylor Swift', 'Beyoncé', 'Drake', 'Kanye', 'Ye',
+    'MrBeast', 'PewDiePie', 'Joe Rogan', 'Tucker Carlson', 'Elon Musk',
+    'DeSantis', 'Newsom', 'Haley', 'Ramaswamy', 'RFK Jr', 'Vivek',
+    'Pelosi', 'McConnell', 'Schumer', 'AOC', 'MTG',
+    'Pope Francis', 'King Charles', 'Prince Harry', 'Meghan Markle',
+    'Andrew Tate', 'Jordan Peterson', 'Ben Shapiro',
+    // Add full names for better matching
+    'Donald Trump', 'Joe Biden', 'Barack Obama', 'Vladimir Putin',
+    'Volodymyr Zelensky', 'Emmanuel Macron', 'Olaf Scholz',
+    'Benjamin Netanyahu', 'Ali Khamenei', 'Narendra Modi',
+    'Recep Erdogan', 'Javier Milei', 'Ron DeSantis', 'Gavin Newsom',
+    'Nikki Haley', 'Nancy Pelosi', 'Mitch McConnell', 'Chuck Schumer',
+    'Sam Altman', 'Sam Bankman-Fried', 'Changpeng Zhao'
+  ];
+
+  // Check for known figures (case-insensitive)
+  for (const figure of knownFigures) {
+    const regex = new RegExp(`\\b${escapeRegex(figure)}\\b`, 'i');
+    if (regex.test(text)) {
+      // Use the canonical name form
+      names.push(figure);
+    }
+  }
+
+  // Also try to find "Firstname Lastname" patterns
+  // Match sequences like "John Smith" - capitalized words
+  const namePattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g;
+  let match;
+  while ((match = namePattern.exec(text)) !== null) {
+    const potentialName = match[1];
+    // Filter out common non-name phrases
+    if (isLikelyPersonName(potentialName)) {
+      names.push(potentialName);
+    }
+  }
+
+  // Deduplicate (case-insensitive)
+  const seen = new Set();
+  return names.filter(name => {
+    const lower = name.toLowerCase();
+    if (seen.has(lower)) return false;
+    seen.add(lower);
+    return true;
+  });
+}
+
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Check if a name from outcomes looks like a person name
+ */
+function isPersonName(name) {
   const nonPersonTerms = new Set([
     'yes', 'no', 'other', 'none', 'neither', 'both',
     'before', 'after', 'over', 'under', 'between',
     'january', 'february', 'march', 'april', 'may', 'june',
-    'july', 'august', 'september', 'october', 'november', 'december'
+    'july', 'august', 'september', 'october', 'november', 'december',
+    'q1', 'q2', 'q3', 'q4', 'higher', 'lower', 'same'
   ]);
 
   const nameLower = name.toLowerCase().trim();
 
-  if (nonPersonTerms.has(nameLower)) {
-    return { isValid: false, reason: 'Common non-person term' };
-  }
+  if (nonPersonTerms.has(nameLower)) return false;
+  if (/^[\d,.\s%$€£]+$/.test(name)) return false;
+  if (/^\d/.test(name)) return false;
 
-  if (/^[\d,.\s]+$/.test(name)) {
-    return { isValid: false, reason: 'Numeric value' };
-  }
-
+  // Must have at least 2 parts (first + last name) OR be a known single name
   const parts = name.split(/\s+/);
   if (parts.length < 2) {
-    return { isValid: false, reason: 'Single word (needs first + last name)' };
+    // Allow known single-word names
+    const knownSingleNames = ['trump', 'biden', 'putin', 'musk', 'bezos', 'zelensky', 'macron', 'ye', 'drake'];
+    return knownSingleNames.includes(nameLower);
   }
 
-  if (/^\d/.test(parts[0])) {
-    return { isValid: false, reason: 'Starts with number' };
-  }
-
-  return { isValid: true };
+  return true;
 }
 
-function looksLikePersonName(name) {
-  return checkPersonName(name).isValid;
+/**
+ * Check if extracted "Firstname Lastname" is likely a person (not a place/thing)
+ */
+function isLikelyPersonName(name) {
+  const nonPersonPhrases = [
+    'united states', 'united kingdom', 'united nations', 'european union',
+    'north korea', 'south korea', 'new york', 'los angeles', 'san francisco',
+    'wall street', 'silicon valley', 'white house', 'supreme court',
+    'federal reserve', 'world war', 'middle east', 'hong kong',
+    'super bowl', 'world cup', 'champions league', 'grand prix'
+  ];
+
+  const lower = name.toLowerCase();
+  for (const phrase of nonPersonPhrases) {
+    if (lower.includes(phrase)) return false;
+  }
+
+  // Simple heuristic: most person names are 2-4 words
+  const words = name.split(/\s+/);
+  if (words.length > 4) return false;
+
+  return true;
 }
 
 async function lookupPerson(name, log) {
