@@ -17,8 +17,9 @@ export default async (request, context) => {
   };
 
   const url = new URL(request.url);
-  const limit = parseInt(url.searchParams.get('limit')) || 100;
+  const limit = parseInt(url.searchParams.get('limit')) || 50;
   const topN = parseInt(url.searchParams.get('top')) || 4;
+  const maxLookups = 20; // Limit Wikipedia lookups to avoid timeout
 
   log('INFO', 'Crawl started', { limit, topN });
 
@@ -111,57 +112,89 @@ export default async (request, context) => {
       skippedExamples: skippedMarkets.slice(0, 5)
     });
 
-    // Step 2: Look up each person on Wikipedia (deduplicated)
-    const results = [];
-    const lookedUp = new Set(); // Track names we've already looked up
-    let wikiLookupCount = 0;
-    const totalPeople = markets.reduce((sum, m) => sum + m.people.length, 0);
-
-    log('INFO', 'Starting Wikipedia lookups', { totalPeople });
+    // Step 2: Collect unique people to look up
+    const uniquePeople = new Map(); // name -> first occurrence info
+    const personMarketMap = []; // All person-market combinations
 
     for (const market of markets) {
       for (const person of market.people) {
-        // Skip if we've already looked up this exact name
         const nameKey = person.name.toLowerCase();
-        if (lookedUp.has(nameKey)) {
-          // Still add the result but mark as duplicate
-          const existingResult = results.find(r => r.personName.toLowerCase() === nameKey);
-          if (existingResult) {
-            results.push({
-              ...existingResult,
-              marketTitle: market.title,
-              marketSlug: market.slug,
-              marketConditionId: market.conditionId,
-              marketVolume: market.volume,
-              marketEndDate: market.endDate,
-              probability: person.probability,
-              nameSource: person.source
-            });
-          }
-          continue;
-        }
 
-        lookedUp.add(nameKey);
-        wikiLookupCount++;
-
-        log('DEBUG', `Looking up person ${wikiLookupCount}/${totalPeople}`, {
+        personMarketMap.push({
+          nameKey,
           name: person.name,
-          source: person.source,
-          market: market.title.substring(0, 50)
+          market,
+          probability: person.probability,
+          source: person.source
         });
 
-        const wikiResult = await lookupPerson(person.name, log);
+        if (!uniquePeople.has(nameKey)) {
+          uniquePeople.set(nameKey, person.name);
+        }
+      }
+    }
 
+    log('INFO', 'Starting Wikipedia lookups', {
+      uniquePeople: uniquePeople.size,
+      totalOccurrences: personMarketMap.length,
+      maxLookups
+    });
+
+    // Limit lookups to avoid timeout
+    const namesToLookup = Array.from(uniquePeople.entries()).slice(0, maxLookups);
+
+    // Parallel Wikipedia lookups in batches of 5
+    const wikiResults = new Map();
+    const batchSize = 5;
+
+    for (let i = 0; i < namesToLookup.length; i += batchSize) {
+      const batch = namesToLookup.slice(i, i + batchSize);
+      log('DEBUG', `Looking up batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(namesToLookup.length/batchSize)}`, {
+        names: batch.map(([_, name]) => name)
+      });
+
+      const batchResults = await Promise.all(
+        batch.map(async ([nameKey, name]) => {
+          const result = await lookupPerson(name, log);
+          return { nameKey, name, result };
+        })
+      );
+
+      for (const { nameKey, name, result } of batchResults) {
+        wikiResults.set(nameKey, { name, ...result });
+      }
+    }
+
+    // Build final results
+    const results = [];
+    for (const entry of personMarketMap) {
+      const wikiResult = wikiResults.get(entry.nameKey);
+
+      if (wikiResult) {
         results.push({
-          marketTitle: market.title,
-          marketSlug: market.slug,
-          marketConditionId: market.conditionId,
-          marketVolume: market.volume,
-          marketEndDate: market.endDate,
-          personName: person.name,
-          probability: person.probability,
-          nameSource: person.source,
+          marketTitle: entry.market.title,
+          marketSlug: entry.market.slug,
+          marketConditionId: entry.market.conditionId,
+          marketVolume: entry.market.volume,
+          marketEndDate: entry.market.endDate,
+          personName: entry.name,
+          probability: entry.probability,
+          nameSource: entry.source,
           ...wikiResult
+        });
+      } else {
+        // Person wasn't looked up (exceeded maxLookups)
+        results.push({
+          marketTitle: entry.market.title,
+          marketSlug: entry.market.slug,
+          marketConditionId: entry.market.conditionId,
+          marketVolume: entry.market.volume,
+          marketEndDate: entry.market.endDate,
+          personName: entry.name,
+          probability: entry.probability,
+          nameSource: entry.source,
+          found: false,
+          status: 'Skipped (limit reached)'
         });
       }
     }
@@ -170,7 +203,8 @@ export default async (request, context) => {
     const stats = {
       totalMarkets: markets.length,
       totalPeople: results.length,
-      uniquePeople: lookedUp.size,
+      uniquePeople: uniquePeople.size,
+      lookedUp: wikiResults.size,
       birthDatesFound: results.filter(r => r.birthDate).length,
       wikipediaNotFound: results.filter(r => !r.found).length,
       birthDateMissing: results.filter(r => r.found && !r.birthDate).length
