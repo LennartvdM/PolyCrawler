@@ -311,6 +311,7 @@ function rebuildResults(peopleData, wikiResults) {
       crawlResults.push({
         marketTitle: market.title,
         marketSlug: market.slug,
+        eventTitle: market.eventTitle, // Parent event title for grouping
         marketConditionId: market.conditionId,
         marketVolume: market.volume,
         marketEndDate: market.endDate,
@@ -326,9 +327,14 @@ function rebuildResults(peopleData, wikiResults) {
 }
 
 function updateStatsFromResults() {
+  // Count unique events/markets (use eventTitle if available, else marketTitle)
+  const uniqueMarkets = new Set(crawlResults.map(r => r.eventTitle || r.marketTitle)).size;
+  // Count unique people
+  const uniquePeople = new Set(crawlResults.map(r => r.personName.toLowerCase())).size;
+
   updateStats({
-    totalMarkets: new Set(crawlResults.map(r => r.marketTitle)).size,
-    totalPeople: crawlResults.length,
+    totalMarkets: uniqueMarkets,
+    totalContenders: uniquePeople,
     birthDatesFound: crawlResults.filter(r => r.birthDate).length,
     wikipediaNotFound: crawlResults.filter(r => r.status && r.status.includes('not found')).length,
     birthDateMissing: crawlResults.filter(r => r.found && !r.birthDate).length
@@ -455,23 +461,37 @@ function groupByMarket(results) {
   const groups = new Map();
 
   for (const r of results) {
-    const key = r.marketTitle;
+    // Group by eventTitle when available (groups markets from same event together)
+    // Fall back to marketTitle for markets without a parent event
+    const key = r.eventTitle || r.marketTitle;
     if (!groups.has(key)) {
       groups.set(key, {
         market: {
-          title: r.marketTitle,
+          title: r.eventTitle || r.marketTitle, // Use event title for display when available
           slug: r.marketSlug,
           conditionId: r.marketConditionId,
           volume: r.marketVolume,
           endDate: r.marketEndDate
         },
-        people: []
+        people: [],
+        seenNames: new Set() // Track unique names within this group
       });
     }
-    groups.get(key).people.push(r);
+
+    // Deduplicate people within the same group
+    const nameLower = r.personName.toLowerCase();
+    const group = groups.get(key);
+    if (!group.seenNames.has(nameLower)) {
+      group.seenNames.add(nameLower);
+      group.people.push(r);
+    }
   }
 
-  return Array.from(groups.values());
+  // Remove the seenNames sets before returning
+  return Array.from(groups.values()).map(g => ({
+    market: g.market,
+    people: g.people
+  }));
 }
 
 function getMarketLinkFromGroup(market) {
@@ -599,7 +619,7 @@ function sortResults(field) {
 
 function exportToCsv() {
   const headers = ['Person Name', 'Birth Date', 'Birth Date (Raw)', 'Probability %',
-                   'Market Title', 'Market Deadline', 'Market Volume',
+                   'Event/Market Title', 'Market Title', 'Market Deadline', 'Market Volume',
                    'Status', 'Wikipedia URL', 'Market URL'];
 
   const rows = filteredResults.map(r => [
@@ -607,6 +627,7 @@ function exportToCsv() {
     r.birthDate || '',
     r.birthDateRaw || '',
     r.probability?.toFixed(1) || '',
+    r.eventTitle || r.marketTitle,
     r.marketTitle,
     r.marketEndDate || '',
     r.marketVolume || '',
@@ -629,7 +650,7 @@ function exportToCsv() {
 
 function copyToClipboard() {
   const text = filteredResults.map(r =>
-    `${r.personName}\t${r.birthDate || '-'}\t${r.probability?.toFixed(1) || '-'}%\t${r.marketTitle}\t${r.marketEndDate || '-'}`
+    `${r.personName}\t${r.birthDate || '-'}\t${r.probability?.toFixed(1) || '-'}%\t${r.eventTitle || r.marketTitle}\t${r.marketEndDate || '-'}`
   ).join('\n');
 
   navigator.clipboard.writeText(text).then(() => {
