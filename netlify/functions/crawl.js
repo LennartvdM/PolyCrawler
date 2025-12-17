@@ -324,8 +324,52 @@ function extractFromOutcomes(market, topN) {
     }
   }
 
-  outcomes.sort((a, b) => b.probability - a.probability);
-  return outcomes.slice(0, topN).filter(o => o.name && isPersonName(o.name));
+  // Extract ALL valid person names from outcomes (no limit)
+  // Parse patterns like "Sam Altman - OpenAI" to get just the name
+  const validOutcomes = [];
+  for (const outcome of outcomes) {
+    const parsedName = parsePersonFromOutcome(outcome.name);
+    if (parsedName && isPersonName(parsedName)) {
+      validOutcomes.push({
+        name: parsedName,
+        probability: outcome.probability
+      });
+    }
+  }
+
+  return validOutcomes;
+}
+
+/**
+ * Parse person name from outcome strings like:
+ * - "Sam Altman - OpenAI" -> "Sam Altman"
+ * - "Tim Cook - Apple" -> "Tim Cook"
+ * - "John Smith" -> "John Smith"
+ */
+function parsePersonFromOutcome(outcomeStr) {
+  if (!outcomeStr) return null;
+
+  // Pattern: "Name - Company" or "Name (Company)" or "Name, Title"
+  let name = outcomeStr;
+
+  // Remove company/title after dash
+  if (name.includes(' - ')) {
+    name = name.split(' - ')[0].trim();
+  }
+
+  // Remove company/title in parentheses
+  name = name.replace(/\s*\([^)]*\)\s*/g, '').trim();
+
+  // Remove company/title after comma
+  if (name.includes(', ')) {
+    const parts = name.split(', ');
+    // Keep first part if it looks like a name (has multiple words)
+    if (parts[0].split(/\s+/).length >= 2) {
+      name = parts[0].trim();
+    }
+  }
+
+  return name || null;
 }
 
 function extractNamesFromText(text) {
@@ -379,7 +423,7 @@ function escapeRegex(string) {
 
 function isPersonName(name) {
   const nonPersonTerms = new Set([
-    'yes', 'no', 'other', 'none', 'neither', 'both',
+    'yes', 'no', 'other', 'none', 'neither', 'both', 'will',
     'before', 'after', 'over', 'under', 'between',
     'january', 'february', 'march', 'april', 'may', 'june',
     'july', 'august', 'september', 'october', 'november', 'december',
@@ -410,6 +454,14 @@ function isLikelyPersonName(name) {
   ];
 
   const lower = name.toLowerCase();
+
+  // Filter out names starting with common question words
+  if (lower.startsWith('will ') || lower.startsWith('when ') ||
+      lower.startsWith('what ') || lower.startsWith('how ') ||
+      lower.startsWith('who ') || lower.startsWith('which ')) {
+    return false;
+  }
+
   for (const phrase of nonPersonPhrases) {
     if (lower.includes(phrase)) return false;
   }
