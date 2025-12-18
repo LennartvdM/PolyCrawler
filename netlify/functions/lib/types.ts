@@ -37,7 +37,7 @@ export interface WikipediaResult {
   wikipediaUrl?: string;
   confidence?: number;
   status: string;
-  source: 'celebrity-db' | 'cache' | 'wikipedia' | 'wikipedia-error';
+  source: 'celebrity-db' | 'registry' | 'cache' | 'wikipedia' | 'wikipedia-error';
   matchedAs?: string;
   cachedAt?: string;
 }
@@ -64,7 +64,7 @@ export interface CelebrityDatabase {
 export interface CacheStatus {
   name: string;
   cached: boolean;
-  source?: 'celebrity-db' | 'blob-cache';
+  source?: 'celebrity-db' | 'registry' | 'blob-cache';
 }
 
 // Crawl result for a person

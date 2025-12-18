@@ -27,7 +27,7 @@ describe('normalizeName', () => {
 
   it('should normalize apostrophes', () => {
     assert.strictEqual(normalizeName("O'Brien"), "o'brien");
-    assert.strictEqual(normalizeName('O'Brien'), "o'brien");
+    assert.strictEqual(normalizeName("O\u2019Brien"), "o'brien");
   });
 
   it('should normalize multiple spaces', () => {
