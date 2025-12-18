@@ -452,7 +452,7 @@ function renderResults() {
               ${p.wikipediaUrl ? `<a href="${p.wikipediaUrl}" target="_blank">${escapeHtml(p.personName)}</a>` : escapeHtml(p.personName)}
               ${getSourceBadge(p.source)}
             </td>
-            <td>
+            <td class="birthdate-col">
               ${p.birthDate || '-'}
               ${p.confidence ? `<span class="confidence-badge confidence-${getConfidenceClass(p.confidence)}">${p.confidence}%</span>` : ''}
             </td>
@@ -472,7 +472,7 @@ function renderResults() {
             </strong>
             ${getSourceBadge(p.source)}
           </td>
-          <td>
+          <td class="birthdate-col">
             ${p.birthDate || '-'}
             ${p.confidence ? `<span class="confidence-badge confidence-${getConfidenceClass(p.confidence)}">${p.confidence}%</span>` : ''}
           </td>
