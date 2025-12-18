@@ -319,6 +319,11 @@ tr:hover {
   width: 30px;
 }
 
+.birthdate-col {
+  min-width: 130px;
+  white-space: nowrap;
+}
+
 .expand-cell {
   text-align: center;
   cursor: pointer;
