@@ -37,9 +37,13 @@ export interface WikipediaResult {
   wikipediaUrl?: string;
   confidence?: number;
   status: string;
-  source: 'celebrity-db' | 'registry' | 'cache' | 'wikipedia' | 'wikipedia-error';
+  source: 'celebrity-db' | 'registry' | 'cache' | 'wikipedia' | 'wikipedia-error' | 'misses-registry';
   matchedAs?: string;
   cachedAt?: string;
+  // For misses-registry results
+  missReason?: string;
+  entityType?: string;
+  seenCount?: number;
 }
 
 // Celebrity database entry
