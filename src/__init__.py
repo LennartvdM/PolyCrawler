@@ -1,5 +1,5 @@
 """
-PolyCrawler - Polymarket contender birth date extraction tool.
+PolyCheck - Polymarket contender birth date extraction tool.
 """
 
 from .polymarket import PolymarketClient, Market, Contender

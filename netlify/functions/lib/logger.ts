@@ -1,5 +1,5 @@
 /**
- * Structured logging utility for PolyCrawler
+ * Structured logging utility for PolyCheck
  * Provides consistent log formatting with levels and metadata
  */
 

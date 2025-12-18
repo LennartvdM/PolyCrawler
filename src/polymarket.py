@@ -32,7 +32,7 @@ class PolymarketClient:
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
-            "User-Agent": "PolyCrawler/1.0"
+            "User-Agent": "PolyCheck/1.0"
         })
 
     def get_active_markets(self, limit: int = 100) -> list[dict]:

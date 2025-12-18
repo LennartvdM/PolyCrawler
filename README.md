@@ -1,10 +1,10 @@
-# PolyCrawler
+# PolyCheck
 
 Extract public figure birth dates from Polymarket prediction markets for horoscope analysis.
 
 ## Implementations
 
-PolyCrawler has two implementations:
+PolyCheck has two implementations:
 
 | Implementation | Location | Status | Best For |
 |---------------|----------|--------|----------|
@@ -78,7 +78,7 @@ Output: JSON API / Google Sheets / CSV
 ## Project Structure
 
 ```
-PolyCrawler/
+PolyCheck/
 ├── netlify/functions/          # TypeScript serverless functions
 │   ├── crawl.js               # Main crawl function
 │   ├── lib/

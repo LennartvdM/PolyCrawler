@@ -13,7 +13,7 @@ export default async (request, context) => {
 
     const response = await fetch(apiUrl, {
       headers: {
-        'User-Agent': 'PolyCrawler/1.0'
+        'User-Agent': 'PolyCheck/1.0'
       }
     });
 
