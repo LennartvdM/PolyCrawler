@@ -1,5 +1,5 @@
 /**
- * Configuration and environment variable validation for PolyCrawler
+ * Configuration and environment variable validation for PolyCheck
  */
 
 import { createLogger } from './logger.js';

@@ -1,4 +1,4 @@
-// PolyCrawler Frontend Application - Optimized
+// PolyCheck Frontend Application - Optimized
 
 let crawlResults = [];
 let filteredResults = [];
@@ -85,7 +85,7 @@ const appsScriptCode = `function doPost(e) {
 }
 
 function doGet(e) {
-  return ContentService.createTextOutput('PolyCrawler Google Sheets endpoint. Use POST to send data.')
+  return ContentService.createTextOutput('PolyCheck Google Sheets endpoint. Use POST to send data.')
     .setMimeType(ContentService.MimeType.TEXT);
 }`;
 
@@ -682,7 +682,7 @@ function exportToCsv() {
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = `polycrawler_${new Date().toISOString().split('T')[0]}.csv`;
+  link.download = `polycheck_${new Date().toISOString().split('T')[0]}.csv`;
   link.click();
 }
 

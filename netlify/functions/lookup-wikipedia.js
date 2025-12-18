@@ -44,7 +44,7 @@ async function lookupPerson(name) {
   const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name)}&srlimit=5&format=json`;
 
   const searchResponse = await fetch(searchUrl, {
-    headers: { 'User-Agent': 'PolyCrawler/1.0 (Horoscope research)' }
+    headers: { 'User-Agent': 'PolyCheck/1.0 (Horoscope research)' }
   });
 
   if (!searchResponse.ok) {
@@ -78,7 +78,7 @@ async function lookupPerson(name) {
   const contentUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=revisions&rvprop=content&rvslots=main&format=json`;
 
   const contentResponse = await fetch(contentUrl, {
-    headers: { 'User-Agent': 'PolyCrawler/1.0 (Horoscope research)' }
+    headers: { 'User-Agent': 'PolyCheck/1.0 (Horoscope research)' }
   });
 
   if (!contentResponse.ok) {

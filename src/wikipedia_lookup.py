@@ -37,7 +37,7 @@ class WikipediaLookup:
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
-            "User-Agent": "PolyCrawler/1.0 (Horoscope research tool)"
+            "User-Agent": "PolyCheck/1.0 (Horoscope research tool)"
         })
 
     def search_person(self, name: str) -> Optional[str]:

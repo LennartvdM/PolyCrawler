@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PolyCrawler - Extract Polymarket contenders and their birth dates for horoscope analysis.
+PolyCheck - Extract Polymarket contenders and their birth dates for horoscope analysis.
 
 Flow:
 1. Fetch active markets from Polymarket API
@@ -39,7 +39,7 @@ def crawl_markets(
     """
     if verbose:
         print("=" * 60)
-        print("PolyCrawler - Polymarket Contender Birth Date Extraction")
+        print("PolyCheck - Polymarket Contender Birth Date Extraction")
         print("=" * 60)
         print()
 

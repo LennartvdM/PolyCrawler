@@ -1,5 +1,5 @@
 {
-  "name": "polycrawler",
+  "name": "polycheck",
   "version": "1.2.0",
   "description": "Extract Polymarket contender birth dates for horoscope analysis",
   "scripts": {

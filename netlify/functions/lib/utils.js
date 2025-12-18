@@ -1,5 +1,5 @@
 /**
- * Shared utilities for PolyCrawler
+ * Shared utilities for PolyCheck
  * - Netlify Blobs caching
  * - Celebrity database lookup
  * - Fuzzy name matching

@@ -346,7 +346,7 @@ async function fetchFromWikipedia(name) {
   const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name)}&srlimit=5&format=json&origin=*`;
 
   const searchResponse = await fetch(searchUrl, {
-    headers: { 'User-Agent': 'PolyCrawler/1.1 (Horoscope research)' }
+    headers: { 'User-Agent': 'PolyCheck/1.1 (Horoscope research)' }
   });
 
   if (!searchResponse.ok) {
@@ -378,7 +378,7 @@ async function fetchFromWikipedia(name) {
   const contentUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=revisions&rvprop=content&rvslots=main&format=json&origin=*`;
 
   const contentResponse = await fetch(contentUrl, {
-    headers: { 'User-Agent': 'PolyCrawler/1.1 (Horoscope research)' }
+    headers: { 'User-Agent': 'PolyCheck/1.1 (Horoscope research)' }
   });
 
   if (!contentResponse.ok) {
@@ -442,7 +442,7 @@ async function fetchMarketsAndPeople(limit, topN, log, sinceDateStr = null) {
   try {
     const eventsUrl = `https://gamma-api.polymarket.com/events?limit=${limit}&active=true&closed=false`;
     const eventsResponse = await fetch(eventsUrl, {
-      headers: { 'User-Agent': 'PolyCrawler/1.1' }
+      headers: { 'User-Agent': 'PolyCheck/1.1' }
     });
 
     if (eventsResponse.ok) {
@@ -476,7 +476,7 @@ async function fetchMarketsAndPeople(limit, topN, log, sinceDateStr = null) {
   const apiUrl = `https://gamma-api.polymarket.com/markets?limit=${Math.max(limit, 100)}&active=true&closed=false`;
 
   const marketResponse = await fetch(apiUrl, {
-    headers: { 'User-Agent': 'PolyCrawler/1.1' }
+    headers: { 'User-Agent': 'PolyCheck/1.1' }
   });
 
   if (!marketResponse.ok) {

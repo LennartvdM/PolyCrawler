@@ -1,5 +1,5 @@
 /**
- * Shared type definitions for PolyCrawler
+ * Shared type definitions for PolyCheck
  */
 
 // Person information from Polymarket
