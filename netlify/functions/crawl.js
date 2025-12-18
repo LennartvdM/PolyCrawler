@@ -4,6 +4,8 @@
  * Features:
  * - Netlify Blobs caching for Wikipedia results
  * - Pre-computed celebrity database for instant lookups
+ * - Birthdate registry for persistent high-confidence results
+ * - Misses registry for tracking lookup failures (duds)
  * - Fuzzy name matching and deduplication
  * - Retry with exponential backoff
  * - Confidence scoring for birth dates
@@ -15,6 +17,7 @@
  * - markets: Fetch markets and extract people (returns list to look up)
  * - lookup: Look up batch of people on Wikipedia (with caching)
  * - cache-status: Check cache status for names
+ * - misses: List entities where birthdate lookup failed (duds)
  */
 
 import {
@@ -31,12 +34,33 @@ import {
 import { createLogger } from './lib/logger.js';
 import { validateConfig } from './lib/config.js';
 import { withWikipediaRateLimit, getWikipediaLimiter } from './lib/rate-limiter.js';
+import {
+  getFromRegistry,
+  addToRegistry,
+  getRegistryStats,
+  resetRegistryStats,
+  getRegistrySize,
+  qualifiesForRegistry
+} from './lib/registry-client.js';
+import {
+  checkMissesRegistry,
+  addToMissesRegistry,
+  listMisses,
+  getMissesStats,
+  getMissesRequestStats,
+  resetMissesStats,
+  detectEntityType
+} from './lib/misses-registry.js';
 
 // Validate configuration on startup
 validateConfig();
 
 export default async (request, context) => {
   const logger = createLogger('crawl');
+
+  // Reset stats for this request
+  resetRegistryStats();
+  resetMissesStats();
 
   // Legacy log function for backwards compatibility with response format
   const log = (level, message, data = null) => {
@@ -69,7 +93,13 @@ export default async (request, context) => {
             return { name, cached: true, source: 'celebrity-db' };
           }
 
-          // Check Blobs cache
+          // Check birthdate registry (persistent, high-confidence)
+          const registryData = await getFromRegistry(name);
+          if (registryData) {
+            return { name, cached: true, source: 'registry' };
+          }
+
+          // Check Blobs cache (30-day TTL)
           const cached = await getCachedResult(name);
           if (cached) {
             return { name, cached: true, source: 'blob-cache' };
@@ -80,7 +110,8 @@ export default async (request, context) => {
       );
 
       const cachedCount = cacheStatus.filter(s => s.cached).length;
-      log('INFO', 'Cache status checked', { total: names.length, cached: cachedCount });
+      const registryCount = cacheStatus.filter(s => s.source === 'registry').length;
+      log('INFO', 'Cache status checked', { total: names.length, cached: cachedCount, fromRegistry: registryCount });
 
       return jsonResponse({
         success: true,
@@ -89,8 +120,40 @@ export default async (request, context) => {
         summary: {
           total: names.length,
           cached: cachedCount,
-          uncached: names.length - cachedCount
+          uncached: names.length - cachedCount,
+          fromRegistry: registryCount
         },
+        registryStats: getRegistryStats(),
+        logs: logger.getLogs()
+      });
+    }
+
+    // Phase: List misses (duds) - entities where we couldn't find birthdates
+    if (phase === 'misses') {
+      const reasonFilter = url.searchParams.get('reason');
+      const entityTypeFilter = url.searchParams.get('entityType');
+      const unresolvedOnly = url.searchParams.get('unresolvedOnly') === 'true';
+      const missesLimit = parseInt(url.searchParams.get('limit')) || 100;
+
+      log('INFO', 'Fetching misses list', { reasonFilter, entityTypeFilter, unresolvedOnly, limit: missesLimit });
+
+      const [misses, stats] = await Promise.all([
+        listMisses({
+          limit: missesLimit,
+          reason: reasonFilter || undefined,
+          entityType: entityTypeFilter || undefined,
+          unresolvedOnly
+        }),
+        getMissesStats()
+      ]);
+
+      log('INFO', 'Misses fetched', { count: misses.length, totalInRegistry: stats.totalMisses });
+
+      return jsonResponse({
+        success: true,
+        phase: 'misses',
+        misses,
+        stats,
         logs: logger.getLogs()
       });
     }
@@ -102,21 +165,37 @@ export default async (request, context) => {
 
       // Pre-check cache status for smart batching hints
       const cachedNames = new Set();
+      let registryHits = 0;
+
       for (const person of people) {
         const celebData = getCelebrityData(person.name);
         if (celebData) {
           cachedNames.add(person.nameKey);
           continue;
         }
+
+        // Check registry (persistent)
+        const registryData = await getFromRegistry(person.name);
+        if (registryData) {
+          cachedNames.add(person.nameKey);
+          registryHits++;
+          continue;
+        }
+
+        // Check cache (TTL-based)
         const cached = await getCachedResult(person.name);
         if (cached) {
           cachedNames.add(person.nameKey);
         }
       }
 
+      // Get registry size for stats
+      const registrySize = await getRegistrySize();
+
       log('INFO', 'Cache pre-check complete', {
         totalPeople: people.length,
         cachedCount: cachedNames.size,
+        registryHits,
         uncachedCount: people.length - cachedNames.size
       });
 
@@ -128,10 +207,15 @@ export default async (request, context) => {
         cacheHints: {
           cachedCount: cachedNames.size,
           uncachedCount: people.length - cachedNames.size,
+          registryHits,
           suggestedBatchSize: calculateBatchSize(
             people.map(p => p.name),
             cachedNames
           )
+        },
+        registry: {
+          size: registrySize,
+          stats: getRegistryStats()
         },
         lastFetchTime,
         logs: logger.getLogs()
@@ -157,12 +241,16 @@ export default async (request, context) => {
 
       // Summary stats
       const cacheHits = results.filter(r => r.source === 'celebrity-db' || r.source === 'cache').length;
+      const registryHits = results.filter(r => r.source === 'registry').length;
+      const missesSkipped = results.filter(r => r.source === 'misses-registry').length;
       const wikiFetches = results.filter(r => r.source === 'wikipedia').length;
       const found = results.filter(r => r.found).length;
 
       log('INFO', 'Lookup batch complete', {
         total: results.length,
         cacheHits,
+        registryHits,
+        missesSkipped,
         wikiFetches,
         found
       });
@@ -171,7 +259,9 @@ export default async (request, context) => {
         success: true,
         phase: 'lookup',
         results,
-        stats: { cacheHits, wikiFetches, found },
+        stats: { cacheHits, registryHits, missesSkipped, wikiFetches, found },
+        registryStats: getRegistryStats(),
+        missesStats: getMissesRequestStats(),
         logs: logger.getLogs()
       });
     }
@@ -273,11 +363,14 @@ function jsonResponse(data, status = 200) {
 /**
  * Optimized person lookup with caching layers
  * 1. Check celebrity database (instant)
- * 2. Check Netlify Blobs cache
- * 3. Fetch from Wikipedia with retry
- * 4. Cache the result
+ * 2. Check birthdate registry (persistent, high-confidence)
+ * 3. Check Netlify Blobs cache (30-day TTL)
+ * 4. Check misses registry (skip known failures in cooldown)
+ * 5. Fetch from Wikipedia with retry
+ * 6. Cache the result + add to registry if high-confidence
+ * 7. Add to misses registry if no birthdate found
  */
-async function lookupPersonOptimized(name, log) {
+async function lookupPersonOptimized(name, log, marketTitle = null) {
   // Layer 1: Celebrity database (instant, no API call)
   const celebData = getCelebrityData(name);
   if (celebData) {
@@ -285,20 +378,82 @@ async function lookupPersonOptimized(name, log) {
     return celebData;
   }
 
-  // Layer 2: Netlify Blobs cache
+  // Layer 2: Birthdate registry (persistent, high-confidence only)
+  const registryData = await getFromRegistry(name);
+  if (registryData) {
+    log('INFO', `Registry hit: ${name}`, { source: 'registry' });
+    return registryData;
+  }
+
+  // Layer 3: Netlify Blobs cache (30-day TTL)
   const cached = await getCachedResult(name);
   if (cached) {
     log('INFO', `Cache hit: ${name}`, { source: 'cache' });
+
+    // Promote to registry if it qualifies (high confidence)
+    if (qualifiesForRegistry(cached)) {
+      await addToRegistry(name, cached, 'cache');
+    }
+
     return cached;
   }
 
-  // Layer 3: Wikipedia API with retry
+  // Layer 4: Check misses registry (skip known failures in cooldown)
+  const missEntry = await checkMissesRegistry(name);
+  if (missEntry) {
+    log('INFO', `Misses registry hit (cooldown): ${name}`, {
+      reason: missEntry.reason,
+      seenCount: missEntry.seenCount
+    });
+    // Return a result indicating this is a known miss
+    return {
+      found: false,
+      status: `Known miss: ${missEntry.reason}`,
+      source: 'misses-registry',
+      missReason: missEntry.reason,
+      entityType: missEntry.entityType,
+      seenCount: missEntry.seenCount
+    };
+  }
+
+  // Layer 5: Wikipedia API with retry
   log('INFO', `Wikipedia fetch: ${name}`);
   const result = await fetchFromWikipediaWithRetry(name, log);
 
   // Cache the result (even negative results to avoid repeated lookups)
   if (result) {
     await setCachedResult(name, result);
+
+    // Add to persistent registry if high-confidence birthdate found
+    if (qualifiesForRegistry(result)) {
+      const added = await addToRegistry(name, result, 'wikipedia');
+      if (added) {
+        log('INFO', `Added to registry: ${name}`, { confidence: result.confidence });
+      }
+    } else {
+      // No good birthdate found - add to misses registry
+      let missReason = 'not-found';
+      if (result.found && !result.birthDate) {
+        missReason = 'no-birthdate';
+      } else if (result.found && result.birthDate && (result.confidence ?? 0) < 80) {
+        missReason = 'low-confidence';
+      }
+
+      // Detect if this might not be a person
+      const entityDetection = detectEntityType(name);
+
+      await addToMissesRegistry(name, missReason, {
+        wikipediaUrl: result.wikipediaUrl,
+        marketTitle: marketTitle,
+        entityType: entityDetection.confidence > 50 ? entityDetection.type : undefined
+      });
+
+      log('INFO', `Added to misses registry: ${name}`, {
+        reason: missReason,
+        entityType: entityDetection.type,
+        entityConfidence: entityDetection.confidence
+      });
+    }
   }
 
   return result;
