@@ -11,9 +11,20 @@ const elements = {
   runCrawl: document.getElementById('runCrawl'),
   btnText: document.querySelector('.btn-text'),
   btnLoading: document.querySelector('.btn-loading'),
+  // Source selector
+  dataSourceRadios: document.querySelectorAll('input[name="dataSource"]'),
+  marketsControls: document.getElementById('marketsControls'),
+  leaderboardControls: document.getElementById('leaderboardControls'),
+  // Markets controls
   categorySelect: document.getElementById('categorySelect'),
+  sortSelect: document.getElementById('sortSelect'),
   marketLimit: document.getElementById('marketLimit'),
   topContenders: document.getElementById('topContenders'),
+  // Leaderboard controls
+  leaderboardCategory: document.getElementById('leaderboardCategory'),
+  leaderboardTime: document.getElementById('leaderboardTime'),
+  leaderboardLimit: document.getElementById('leaderboardLimit'),
+  // Results
   stats: document.getElementById('stats'),
   actions: document.getElementById('actions'),
   emptyState: document.getElementById('emptyState'),
@@ -45,6 +56,19 @@ const elements = {
   copyLogs: document.getElementById('copyLogs'),
   clearLogs: document.getElementById('clearLogs'),
 };
+
+// Get currently selected data source
+function getSelectedSource() {
+  const checked = document.querySelector('input[name="dataSource"]:checked');
+  return checked ? checked.value : 'markets';
+}
+
+// Toggle control sections based on selected source
+function updateControlsVisibility() {
+  const source = getSelectedSource();
+  elements.marketsControls.style.display = source === 'markets' ? 'block' : 'none';
+  elements.leaderboardControls.style.display = source === 'leaderboard' ? 'block' : 'none';
+}
 
 // Google Apps Script code for the modal
 const appsScriptCode = `function doPost(e) {
@@ -108,6 +132,11 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupEventListeners() {
+  // Source selector toggle
+  elements.dataSourceRadios.forEach(radio => {
+    radio.addEventListener('change', updateControlsVisibility);
+  });
+
   // Run crawl
   elements.runCrawl.addEventListener('click', runCrawl);
 
@@ -196,9 +225,17 @@ function setupEventListeners() {
 }
 
 async function runCrawl() {
+  const source = getSelectedSource();
+
+  if (source === 'leaderboard') {
+    return runLeaderboardCrawl();
+  }
+
+  // Markets crawl
   const limit = parseInt(elements.marketLimit.value) || 50;
   const top = parseInt(elements.topContenders.value) || 4;
   const category = elements.categorySelect.value || '';
+  const sortBy = elements.sortSelect.value || '';
   const DEFAULT_BATCH_SIZE = 5;
 
   // Update UI
@@ -217,17 +254,19 @@ async function runCrawl() {
   let peopleData = [];
   let cacheStats = { hits: 0, fetches: 0 };
 
-  addLocalLog('INFO', 'Starting optimized crawl...', { limit, top, category: category || 'all' });
+  const sortLabel = sortBy ? ` sorted by ${sortBy}` : '';
+  addLocalLog('INFO', 'Starting optimized crawl...', { limit, top, category: category || 'all', sortBy: sortBy || 'default' });
   renderLogs();
   renderResults();
 
   try {
     // Phase 1: Fetch markets and get list of people
-    addLocalLog('INFO', 'Phase 1: Fetching markets...', { category: category || 'all' });
-    elements.emptyState.innerHTML = `<p>Fetching ${category || 'all'} markets and extracting names...</p>`;
+    addLocalLog('INFO', 'Phase 1: Fetching markets...', { category: category || 'all', sortBy: sortBy || 'default' });
+    elements.emptyState.innerHTML = `<p>Fetching ${category || 'all'} markets${sortLabel} and extracting names...</p>`;
 
     const categoryParam = category ? `&category=${encodeURIComponent(category)}` : '';
-    const marketsResponse = await fetch(`/api/crawl?phase=markets&limit=${limit}&top=${top}${categoryParam}`);
+    const sortParam = sortBy ? `&sort=${encodeURIComponent(sortBy)}` : '';
+    const marketsResponse = await fetch(`/api/crawl?phase=markets&limit=${limit}&top=${top}${categoryParam}${sortParam}`);
     const marketsData = await marketsResponse.json();
 
     if (marketsData.logs) {
@@ -327,6 +366,153 @@ async function runCrawl() {
     elements.actions.style.display = 'flex';
     renderLogs();
   }
+}
+
+async function runLeaderboardCrawl() {
+  const category = elements.leaderboardCategory.value || 'overall';
+  const timeWindow = elements.leaderboardTime.value || 'weekly';
+  const limit = parseInt(elements.leaderboardLimit.value) || 50;
+  const DEFAULT_BATCH_SIZE = 5;
+
+  // Update UI
+  elements.runCrawl.disabled = true;
+  elements.btnText.style.display = 'none';
+  elements.btnLoading.style.display = 'inline';
+  elements.emptyState.innerHTML = '<p>Fetching leaderboard...</p>';
+  elements.stats.style.display = 'flex';
+  elements.tableContainer.style.display = 'block';
+
+  // Clear previous results and logs
+  crawlResults = [];
+  filteredResults = [];
+  crawlLogs = [];
+  const wikiResults = new Map();
+  let peopleData = [];
+  let cacheStats = { hits: 0, fetches: 0 };
+
+  addLocalLog('INFO', 'Starting leaderboard crawl...', { category, timeWindow, limit });
+  renderLogs();
+  renderResults();
+
+  try {
+    // Fetch leaderboard data
+    addLocalLog('INFO', 'Fetching leaderboard...', { category, timeWindow });
+    elements.emptyState.innerHTML = `<p>Fetching ${category} leaderboard (${timeWindow})...</p>`;
+
+    const response = await fetch(`/api/crawl?phase=leaderboard&category=${encodeURIComponent(category)}&time=${encodeURIComponent(timeWindow)}&limit=${limit}`);
+    const data = await response.json();
+
+    if (data.logs) {
+      crawlLogs = [...crawlLogs, ...data.logs];
+      renderLogs();
+    }
+
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to fetch leaderboard');
+    }
+
+    peopleData = data.people || [];
+    const totalPeople = peopleData.length;
+    const cacheHints = data.cacheHints || {};
+
+    addLocalLog('INFO', 'Leaderboard fetched', {
+      traders: totalPeople,
+      cachedCount: cacheHints.cachedCount || 0
+    });
+
+    if (totalPeople === 0) {
+      elements.emptyState.innerHTML = '<p style="color: var(--warning);">No traders found on leaderboard.</p>';
+      return;
+    }
+
+    // Look up people in batches
+    const names = peopleData.map(p => p.name);
+    let lookedUp = 0;
+    const batchSize = cacheHints.suggestedBatchSize || DEFAULT_BATCH_SIZE;
+
+    for (let i = 0; i < names.length; i += batchSize) {
+      const batch = names.slice(i, i + batchSize);
+      const batchNum = Math.floor(i / batchSize) + 1;
+      const totalBatches = Math.ceil(names.length / batchSize);
+
+      elements.emptyState.innerHTML = `<p>Looking up Wikipedia... (${lookedUp}/${totalPeople} traders)</p>`;
+      addLocalLog('INFO', `Looking up batch ${batchNum}/${totalBatches}`, { names: batch });
+
+      try {
+        const lookupResponse = await fetch(`/api/crawl?phase=lookup&names=${encodeURIComponent(JSON.stringify(batch))}`);
+        const lookupData = await lookupResponse.json();
+
+        if (lookupData.logs) {
+          crawlLogs = [...crawlLogs, ...lookupData.logs];
+          renderLogs();
+        }
+
+        if (lookupData.success && lookupData.results) {
+          for (const result of lookupData.results) {
+            wikiResults.set(result.name.toLowerCase(), result);
+
+            if (result.source === 'celebrity-db' || result.source === 'cache') {
+              cacheStats.hits++;
+            } else if (result.source === 'wikipedia') {
+              cacheStats.fetches++;
+            }
+          }
+          lookedUp += batch.length;
+
+          rebuildLeaderboardResults(peopleData, wikiResults, category, timeWindow);
+          updateStatsFromResults(cacheStats);
+          renderResults();
+        }
+      } catch (batchError) {
+        addLocalLog('WARN', `Batch ${batchNum} failed`, { error: batchError.message });
+      }
+    }
+
+    elements.emptyState.style.display = 'none';
+    addLocalLog('INFO', 'Leaderboard crawl completed', {
+      totalTraders: crawlResults.length,
+      birthDatesFound: crawlResults.filter(r => r.birthDate).length,
+      cacheHits: cacheStats.hits,
+      wikiFetches: cacheStats.fetches
+    });
+
+  } catch (error) {
+    console.error('Leaderboard crawl error:', error);
+    addLocalLog('ERROR', 'Leaderboard crawl failed', { message: error.message });
+    elements.emptyState.innerHTML = `<p style="color: var(--danger);">Error: ${error.message}</p>`;
+    elements.emptyState.style.display = 'block';
+  } finally {
+    elements.runCrawl.disabled = false;
+    elements.btnText.style.display = 'inline';
+    elements.btnLoading.style.display = 'none';
+    elements.actions.style.display = 'flex';
+    renderLogs();
+  }
+}
+
+function rebuildLeaderboardResults(peopleData, wikiResults, category, timeWindow) {
+  crawlResults = [];
+
+  for (const person of peopleData) {
+    const wikiResult = wikiResults.get(person.name.toLowerCase());
+
+    crawlResults.push({
+      marketTitle: `${category} Leaderboard - ${timeWindow}`,
+      marketSlug: null,
+      eventTitle: `Polymarket ${category.charAt(0).toUpperCase() + category.slice(1)} Leaderboard`,
+      marketConditionId: null,
+      marketVolume: person.volume || 0,
+      marketEndDate: null,
+      personName: person.name,
+      probability: null,
+      nameSource: 'leaderboard',
+      rank: person.rank,
+      profit: person.profit,
+      ...(wikiResult || { found: false, status: 'Pending...' })
+    });
+  }
+
+  filteredResults = [...crawlResults];
 }
 
 function rebuildResults(peopleData, wikiResults) {
