@@ -525,6 +525,192 @@ export default async (request, context) => {
       }
     }
 
+    // Phase: Search - search Polymarket for markets matching a query
+    if (phase === 'search') {
+      const query = url.searchParams.get('q') || url.searchParams.get('query');
+      if (!query) {
+        return jsonResponse({ success: false, error: 'Missing query parameter' }, 400);
+      }
+
+      log('INFO', 'Searching Polymarket', { query, topN });
+
+      try {
+        // Search both events and markets endpoints with the query
+        const allMarkets = [];
+
+        // Search events
+        const eventsUrl = `https://gamma-api.polymarket.com/events?limit=50&active=true&closed=false&q=${encodeURIComponent(query)}`;
+        log('DEBUG', 'Searching events', { url: eventsUrl });
+
+        try {
+          const eventsResponse = await fetch(eventsUrl, {
+            headers: { 'User-Agent': 'PolyCheck/1.2' }
+          });
+
+          if (eventsResponse.ok) {
+            const events = await eventsResponse.json();
+            log('INFO', 'Events search results', { count: events.length });
+
+            for (const event of events) {
+              if (event.markets && Array.isArray(event.markets)) {
+                for (const market of event.markets) {
+                  market._source = 'events-search';
+                  market._eventSlug = event.slug;
+                  market._eventTitle = event.title || event.question || null;
+                  allMarkets.push(market);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          log('WARN', 'Events search failed', { error: e.message });
+        }
+
+        // Search markets directly
+        const marketsUrl = `https://gamma-api.polymarket.com/markets?limit=50&active=true&closed=false&q=${encodeURIComponent(query)}`;
+        log('DEBUG', 'Searching markets', { url: marketsUrl });
+
+        try {
+          const marketsResponse = await fetch(marketsUrl, {
+            headers: { 'User-Agent': 'PolyCheck/1.2' }
+          });
+
+          if (marketsResponse.ok) {
+            const markets = await marketsResponse.json();
+            log('INFO', 'Markets search results', { count: markets.length });
+
+            // Dedupe by slug
+            const existingSlugs = new Set(allMarkets.map(m => m.slug));
+            for (const market of markets) {
+              if (!existingSlugs.has(market.slug)) {
+                market._source = 'markets-search';
+                allMarkets.push(market);
+              }
+            }
+          }
+        } catch (e) {
+          log('WARN', 'Markets search failed', { error: e.message });
+        }
+
+        log('INFO', 'Total search results', { count: allMarkets.length });
+
+        if (allMarkets.length === 0) {
+          return jsonResponse({
+            success: true,
+            phase: 'search',
+            query,
+            markets: [],
+            people: [],
+            cacheHints: { cachedCount: 0, uncachedCount: 0, suggestedBatchSize: 5 },
+            logs: logger.getLogs()
+          });
+        }
+
+        // Extract people from markets
+        const markets = [];
+        let peopleList = [];
+
+        for (const market of allMarkets) {
+          const processed = extractPeopleFromMarket(market, topN);
+          if (processed.people.length > 0) {
+            markets.push(processed);
+
+            for (const person of processed.people) {
+              const match = findSimilarPerson(person.name, peopleList, 75);
+
+              if (!match) {
+                peopleList.push({
+                  name: person.name,
+                  nameKey: normalizeName(person.name),
+                  markets: [{
+                    title: processed.title,
+                    slug: processed.slug,
+                    eventTitle: processed.eventTitle,
+                    conditionId: processed.conditionId,
+                    volume: processed.volume,
+                    endDate: processed.endDate,
+                    probability: person.probability,
+                    source: person.source
+                  }]
+                });
+              } else {
+                if (person.name.length > match.person.name.length) {
+                  match.person.name = person.name;
+                  match.person.nameKey = normalizeName(person.name);
+                }
+
+                match.person.markets.push({
+                  title: processed.title,
+                  slug: processed.slug,
+                  eventTitle: processed.eventTitle,
+                  conditionId: processed.conditionId,
+                  volume: processed.volume,
+                  endDate: processed.endDate,
+                  probability: person.probability,
+                  source: person.source
+                });
+              }
+            }
+          }
+        }
+
+        // Final fuzzy deduplication
+        peopleList = deduplicatePeople(peopleList, 75);
+
+        log('INFO', 'People extracted from search', {
+          marketsWithPeople: markets.length,
+          uniquePeople: peopleList.length
+        });
+
+        // Pre-check cache status for smart batching hints
+        const cachedNames = new Set();
+        for (const person of peopleList) {
+          const celebData = getCelebrityData(person.name);
+          if (celebData) {
+            cachedNames.add(person.nameKey);
+            continue;
+          }
+
+          const registryData = await getFromRegistry(person.name);
+          if (registryData) {
+            cachedNames.add(person.nameKey);
+            continue;
+          }
+
+          const cached = await getCachedResult(person.name);
+          if (cached) {
+            cachedNames.add(person.nameKey);
+          }
+        }
+
+        return jsonResponse({
+          success: true,
+          phase: 'search',
+          query,
+          markets,
+          people: peopleList,
+          cacheHints: {
+            cachedCount: cachedNames.size,
+            uncachedCount: peopleList.length - cachedNames.size,
+            suggestedBatchSize: calculateBatchSize(
+              peopleList.map(p => p.name),
+              cachedNames
+            )
+          },
+          logs: logger.getLogs()
+        });
+
+      } catch (error) {
+        log('ERROR', 'Search failed', { error: error.message });
+        return jsonResponse({
+          success: false,
+          error: `Search failed: ${error.message}`,
+          phase: 'search',
+          logs: logger.getLogs()
+        }, 500);
+      }
+    }
+
     // Full mode (legacy) - for backwards compatibility
     log('INFO', 'Full crawl mode', { limit, topN, category: category || 'all', sort: sortBy || 'default' });
     const { markets, people } = await fetchMarketsAndPeople(limit, topN, log, null, category, sortBy);

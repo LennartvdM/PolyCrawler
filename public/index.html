@@ -29,6 +29,10 @@
           <input type="radio" name="dataSource" value="url">
           <span>Event URL</span>
         </label>
+        <label class="source-option">
+          <input type="radio" name="dataSource" value="search">
+          <span>Search</span>
+        </label>
       </div>
 
       <!-- Markets Controls -->
@@ -127,6 +131,21 @@
           </div>
         </div>
         <p class="control-hint">Paste a Polymarket event URL to extract birth dates for all participants in that event.</p>
+      </div>
+
+      <!-- Search Controls -->
+      <div class="controls-section" id="searchControls" style="display: none;">
+        <div class="controls-row">
+          <div class="control-group" style="flex: 2;">
+            <label for="searchQuery">Search Query:</label>
+            <input type="text" id="searchQuery" placeholder="Taylor Swift">
+          </div>
+          <div class="control-group">
+            <label for="searchTopContenders">Top contenders per market:</label>
+            <input type="number" id="searchTopContenders" value="4" min="1" max="10">
+          </div>
+        </div>
+        <p class="control-hint">Search Polymarket for markets matching your query (e.g., "Taylor Swift" or "World Cup").</p>
       </div>
 
       <button id="runCrawl" class="btn-primary">
