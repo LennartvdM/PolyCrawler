@@ -16,8 +16,12 @@ const elements = {
   marketsControls: document.getElementById('marketsControls'),
   leaderboardControls: document.getElementById('leaderboardControls'),
   urlControls: document.getElementById('urlControls'),
+  searchControls: document.getElementById('searchControls'),
   // URL mode
   eventUrl: document.getElementById('eventUrl'),
+  // Search mode
+  searchQuery: document.getElementById('searchQuery'),
+  searchTopContenders: document.getElementById('searchTopContenders'),
   // Markets controls
   categorySelect: document.getElementById('categorySelect'),
   sortSelect: document.getElementById('sortSelect'),
@@ -72,6 +76,7 @@ function updateControlsVisibility() {
   elements.marketsControls.style.display = source === 'markets' ? 'block' : 'none';
   elements.leaderboardControls.style.display = source === 'leaderboard' ? 'block' : 'none';
   elements.urlControls.style.display = source === 'url' ? 'block' : 'none';
+  elements.searchControls.style.display = source === 'search' ? 'block' : 'none';
 }
 
 // Google Apps Script code for the modal
@@ -237,6 +242,10 @@ async function runCrawl() {
 
   if (source === 'url') {
     return runUrlLookup();
+  }
+
+  if (source === 'search') {
+    return runSearchCrawl();
   }
 
   // Markets crawl
@@ -636,6 +645,142 @@ async function runUrlLookup() {
   } catch (error) {
     console.error('Event lookup error:', error);
     addLocalLog('ERROR', 'Event lookup failed', { message: error.message });
+    elements.emptyState.innerHTML = `<p style="color: var(--danger);">Error: ${error.message}</p>`;
+    elements.emptyState.style.display = 'block';
+  } finally {
+    elements.runCrawl.disabled = false;
+    elements.btnText.style.display = 'inline';
+    elements.btnLoading.style.display = 'none';
+    elements.actions.style.display = 'flex';
+    renderLogs();
+  }
+}
+
+/**
+ * Search Polymarket for markets matching a query
+ */
+async function runSearchCrawl() {
+  const query = elements.searchQuery.value.trim();
+  const top = parseInt(elements.searchTopContenders.value) || 4;
+  const DEFAULT_BATCH_SIZE = 5;
+
+  if (!query) {
+    elements.emptyState.innerHTML = '<p style="color: var(--warning);">Please enter a search query</p>';
+    elements.emptyState.style.display = 'block';
+    elements.tableContainer.style.display = 'none';
+    return;
+  }
+
+  // Update UI
+  elements.runCrawl.disabled = true;
+  elements.btnText.style.display = 'none';
+  elements.btnLoading.style.display = 'inline';
+  elements.emptyState.innerHTML = `<p>Searching for "${query}"...</p>`;
+  elements.emptyState.style.display = 'block';
+  elements.stats.style.display = 'flex';
+  elements.tableContainer.style.display = 'none';
+
+  // Clear previous results and logs
+  crawlResults = [];
+  filteredResults = [];
+  crawlLogs = [];
+  const wikiResults = new Map();
+  let peopleData = [];
+  let cacheStats = { hits: 0, fetches: 0 };
+
+  addLocalLog('INFO', 'Starting search crawl...', { query, top });
+  renderLogs();
+
+  try {
+    // Phase 1: Search markets
+    addLocalLog('INFO', 'Searching Polymarket...', { query });
+    elements.emptyState.innerHTML = `<p>Searching for "${query}"...</p>`;
+
+    const response = await fetch(`/api/crawl?phase=search&q=${encodeURIComponent(query)}&top=${top}`);
+    const data = await response.json();
+
+    if (data.logs) {
+      crawlLogs = [...crawlLogs, ...data.logs];
+      renderLogs();
+    }
+
+    if (!data.success) {
+      throw new Error(data.error || 'Search failed');
+    }
+
+    peopleData = data.people || [];
+    const totalPeople = peopleData.length;
+    const cacheHints = data.cacheHints || {};
+
+    addLocalLog('INFO', 'Search results fetched', {
+      markets: data.markets?.length || 0,
+      uniquePeople: totalPeople,
+      cachedCount: cacheHints.cachedCount || 0
+    });
+
+    if (totalPeople === 0) {
+      elements.emptyState.innerHTML = `<p style="color: var(--warning);">No people found for "${query}".</p>`;
+      elements.tableContainer.style.display = 'none';
+      return;
+    }
+
+    // Phase 2: Look up people in batches
+    const names = peopleData.map(p => p.name);
+    let lookedUp = 0;
+    const batchSize = cacheHints.suggestedBatchSize || DEFAULT_BATCH_SIZE;
+
+    elements.tableContainer.style.display = 'block';
+
+    for (let i = 0; i < names.length; i += batchSize) {
+      const batch = names.slice(i, i + batchSize);
+      const batchNum = Math.floor(i / batchSize) + 1;
+      const totalBatches = Math.ceil(names.length / batchSize);
+
+      elements.emptyState.innerHTML = `<p>Looking up Wikipedia... (${lookedUp}/${totalPeople} people)</p>`;
+      addLocalLog('INFO', `Looking up batch ${batchNum}/${totalBatches}`, { names: batch });
+
+      try {
+        const lookupResponse = await fetch(`/api/crawl?phase=lookup&names=${encodeURIComponent(JSON.stringify(batch))}`);
+        const lookupData = await lookupResponse.json();
+
+        if (lookupData.logs) {
+          crawlLogs = [...crawlLogs, ...lookupData.logs];
+          renderLogs();
+        }
+
+        if (lookupData.success && lookupData.results) {
+          for (const result of lookupData.results) {
+            wikiResults.set(result.name.toLowerCase(), result);
+
+            if (result.source === 'celebrity-db' || result.source === 'cache') {
+              cacheStats.hits++;
+            } else if (result.source === 'wikipedia') {
+              cacheStats.fetches++;
+            }
+          }
+          lookedUp += batch.length;
+
+          rebuildResults(peopleData, wikiResults);
+          updateStatsFromResults(cacheStats);
+          renderResults();
+        }
+      } catch (batchError) {
+        addLocalLog('WARN', `Batch ${batchNum} failed`, { error: batchError.message });
+      }
+    }
+
+    elements.emptyState.style.display = 'none';
+    addLocalLog('INFO', 'Search crawl completed', {
+      query,
+      totalPeople: crawlResults.length,
+      birthDatesFound: crawlResults.filter(r => r.birthDate).length,
+      cacheHits: cacheStats.hits,
+      wikiFetches: cacheStats.fetches
+    });
+
+  } catch (error) {
+    console.error('Search crawl error:', error);
+    addLocalLog('ERROR', 'Search crawl failed', { message: error.message });
     elements.emptyState.innerHTML = `<p style="color: var(--danger);">Error: ${error.message}</p>`;
     elements.emptyState.style.display = 'block';
   } finally {
