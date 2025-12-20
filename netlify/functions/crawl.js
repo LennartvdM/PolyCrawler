@@ -161,6 +161,180 @@ export default async (request, context) => {
       });
     }
 
+    // Phase: Event lookup by URL/slug
+    if (phase === 'event') {
+      const eventSlug = url.searchParams.get('slug');
+      if (!eventSlug) {
+        return jsonResponse({ success: false, error: 'Missing slug parameter' }, 400);
+      }
+
+      log('INFO', 'Event lookup by slug', { slug: eventSlug });
+
+      try {
+        // Fetch the specific event from Polymarket API
+        const eventUrl = `https://gamma-api.polymarket.com/events?slug=${encodeURIComponent(eventSlug)}`;
+        const eventResponse = await fetch(eventUrl, {
+          headers: { 'User-Agent': 'PolyCheck/1.2' }
+        });
+
+        if (!eventResponse.ok) {
+          throw new Error(`Polymarket API error: ${eventResponse.status}`);
+        }
+
+        const events = await eventResponse.json();
+
+        if (!events || events.length === 0) {
+          return jsonResponse({
+            success: false,
+            error: 'Event not found',
+            slug: eventSlug,
+            logs: logger.getLogs()
+          }, 404);
+        }
+
+        const event = events[0];
+        log('INFO', 'Event found', {
+          title: event.title || event.question,
+          marketsCount: event.markets?.length || 0
+        });
+
+        // Extract people from all markets in this event
+        let peopleList = [];
+        const markets = [];
+
+        if (event.markets && Array.isArray(event.markets)) {
+          for (const market of event.markets) {
+            market._eventSlug = event.slug;
+            market._eventTitle = event.title || event.question || null;
+
+            const processed = extractPeopleFromMarket(market, topN);
+            if (processed.people.length > 0) {
+              markets.push(processed);
+
+              for (const person of processed.people) {
+                const match = findSimilarPerson(person.name, peopleList, 75);
+
+                if (!match) {
+                  peopleList.push({
+                    name: person.name,
+                    nameKey: normalizeName(person.name),
+                    markets: [{
+                      title: processed.title,
+                      slug: processed.slug,
+                      eventTitle: processed.eventTitle,
+                      conditionId: processed.conditionId,
+                      volume: processed.volume,
+                      endDate: processed.endDate,
+                      probability: person.probability,
+                      source: person.source
+                    }]
+                  });
+                } else {
+                  if (person.name.length > match.person.name.length) {
+                    match.person.name = person.name;
+                    match.person.nameKey = normalizeName(person.name);
+                  }
+
+                  match.person.markets.push({
+                    title: processed.title,
+                    slug: processed.slug,
+                    eventTitle: processed.eventTitle,
+                    conditionId: processed.conditionId,
+                    volume: processed.volume,
+                    endDate: processed.endDate,
+                    probability: person.probability,
+                    source: person.source
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        // Deduplicate people
+        peopleList = deduplicatePeople(peopleList, 75);
+
+        log('INFO', 'People extracted from event', {
+          marketsWithPeople: markets.length,
+          uniquePeople: peopleList.length
+        });
+
+        // Look up all people immediately (since this is a focused lookup)
+        const results = await Promise.all(
+          peopleList.map(async (person) => {
+            const result = await lookupPersonOptimized(person.name, log);
+            return {
+              name: person.name,
+              nameKey: person.nameKey,
+              markets: person.markets,
+              ...result
+            };
+          })
+        );
+
+        // Build final results matching the expected format
+        const finalResults = [];
+        for (const person of results) {
+          for (const market of person.markets) {
+            finalResults.push({
+              marketTitle: market.title,
+              marketSlug: market.slug,
+              eventTitle: market.eventTitle,
+              marketConditionId: market.conditionId,
+              marketVolume: market.volume,
+              marketEndDate: market.endDate,
+              personName: person.name,
+              probability: market.probability,
+              nameSource: market.source,
+              found: person.found,
+              status: person.status,
+              birthDate: person.birthDate,
+              birthDateRaw: person.birthDateRaw,
+              confidence: person.confidence,
+              wikipediaUrl: person.wikipediaUrl,
+              source: person.source
+            });
+          }
+        }
+
+        const stats = {
+          totalMarkets: markets.length,
+          totalPeople: finalResults.length,
+          uniquePeople: peopleList.length,
+          birthDatesFound: finalResults.filter(r => r.birthDate).length,
+          wikipediaNotFound: finalResults.filter(r => !r.found).length,
+          birthDateMissing: finalResults.filter(r => r.found && !r.birthDate).length
+        };
+
+        log('INFO', 'Event lookup completed', stats);
+
+        return jsonResponse({
+          success: true,
+          phase: 'event',
+          event: {
+            title: event.title || event.question,
+            slug: event.slug,
+            description: event.description,
+            startDate: event.startDate,
+            endDate: event.endDate
+          },
+          stats,
+          results: finalResults,
+          registryStats: getRegistryStats(),
+          logs: logger.getLogs()
+        });
+
+      } catch (error) {
+        log('ERROR', 'Event lookup failed', { error: error.message });
+        return jsonResponse({
+          success: false,
+          error: error.message,
+          slug: eventSlug,
+          logs: logger.getLogs()
+        }, 500);
+      }
+    }
+
     // Phase 1: Fetch markets and extract people
     if (phase === 'markets') {
       log('INFO', 'Phase 1: Fetching markets', { limit, topN, incrementalSince, category: category || 'all', sort: sortBy || 'default' });
