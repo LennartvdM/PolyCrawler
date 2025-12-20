@@ -15,6 +15,9 @@ const elements = {
   dataSourceRadios: document.querySelectorAll('input[name="dataSource"]'),
   marketsControls: document.getElementById('marketsControls'),
   leaderboardControls: document.getElementById('leaderboardControls'),
+  urlControls: document.getElementById('urlControls'),
+  // URL mode
+  eventUrl: document.getElementById('eventUrl'),
   // Markets controls
   categorySelect: document.getElementById('categorySelect'),
   sortSelect: document.getElementById('sortSelect'),
@@ -68,6 +71,7 @@ function updateControlsVisibility() {
   const source = getSelectedSource();
   elements.marketsControls.style.display = source === 'markets' ? 'block' : 'none';
   elements.leaderboardControls.style.display = source === 'leaderboard' ? 'block' : 'none';
+  elements.urlControls.style.display = source === 'url' ? 'block' : 'none';
 }
 
 // Google Apps Script code for the modal
@@ -229,6 +233,10 @@ async function runCrawl() {
 
   if (source === 'leaderboard') {
     return runLeaderboardCrawl();
+  }
+
+  if (source === 'url') {
+    return runUrlLookup();
   }
 
   // Markets crawl
@@ -479,6 +487,155 @@ async function runLeaderboardCrawl() {
   } catch (error) {
     console.error('Leaderboard crawl error:', error);
     addLocalLog('ERROR', 'Leaderboard crawl failed', { message: error.message });
+    elements.emptyState.innerHTML = `<p style="color: var(--danger);">Error: ${error.message}</p>`;
+    elements.emptyState.style.display = 'block';
+  } finally {
+    elements.runCrawl.disabled = false;
+    elements.btnText.style.display = 'inline';
+    elements.btnLoading.style.display = 'none';
+    elements.actions.style.display = 'flex';
+    renderLogs();
+  }
+}
+
+/**
+ * Parse Polymarket URL to extract event slug
+ * Supports formats:
+ * - https://polymarket.com/event/boxing-andrew-tate-vs-chase-demoor
+ * - polymarket.com/event/boxing-andrew-tate-vs-chase-demoor
+ * - /event/boxing-andrew-tate-vs-chase-demoor
+ * - boxing-andrew-tate-vs-chase-demoor (just the slug)
+ */
+function parsePolymarketUrl(input) {
+  if (!input) return null;
+
+  const trimmed = input.trim();
+
+  // Direct slug (no slashes, no dots except in URL)
+  if (!trimmed.includes('/') && !trimmed.includes('.')) {
+    return trimmed;
+  }
+
+  // Try to parse as URL
+  try {
+    let urlStr = trimmed;
+    if (!urlStr.startsWith('http')) {
+      urlStr = 'https://' + urlStr;
+    }
+
+    const url = new URL(urlStr);
+    const pathParts = url.pathname.split('/').filter(p => p);
+
+    // Look for /event/slug pattern
+    const eventIndex = pathParts.indexOf('event');
+    if (eventIndex !== -1 && pathParts[eventIndex + 1]) {
+      return pathParts[eventIndex + 1];
+    }
+
+    // If just /slug
+    if (pathParts.length === 1) {
+      return pathParts[0];
+    }
+  } catch {
+    // Not a valid URL, try extracting from path-like string
+    const parts = trimmed.split('/').filter(p => p);
+    const eventIndex = parts.indexOf('event');
+    if (eventIndex !== -1 && parts[eventIndex + 1]) {
+      return parts[eventIndex + 1];
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Look up a Polymarket event by URL
+ */
+async function runUrlLookup() {
+  const inputUrl = elements.eventUrl.value.trim();
+
+  if (!inputUrl) {
+    elements.emptyState.innerHTML = '<p style="color: var(--warning);">Please enter a Polymarket event URL</p>';
+    elements.emptyState.style.display = 'block';
+    elements.tableContainer.style.display = 'none';
+    return;
+  }
+
+  const slug = parsePolymarketUrl(inputUrl);
+
+  if (!slug) {
+    elements.emptyState.innerHTML = '<p style="color: var(--danger);">Invalid URL format. Please enter a valid Polymarket event URL.</p>';
+    elements.emptyState.style.display = 'block';
+    elements.tableContainer.style.display = 'none';
+    return;
+  }
+
+  // Update UI
+  elements.runCrawl.disabled = true;
+  elements.btnText.style.display = 'none';
+  elements.btnLoading.style.display = 'inline';
+  elements.emptyState.innerHTML = '<p>Looking up event...</p>';
+  elements.emptyState.style.display = 'block';
+  elements.stats.style.display = 'flex';
+  elements.tableContainer.style.display = 'none';
+
+  // Clear previous results and logs
+  crawlResults = [];
+  filteredResults = [];
+  crawlLogs = [];
+
+  addLocalLog('INFO', 'Looking up event by URL...', { slug, originalUrl: inputUrl });
+  renderLogs();
+
+  try {
+    const response = await fetch(`/api/crawl?phase=event&slug=${encodeURIComponent(slug)}`);
+    const data = await response.json();
+
+    if (data.logs) {
+      crawlLogs = [...crawlLogs, ...data.logs];
+      renderLogs();
+    }
+
+    if (!data.success) {
+      throw new Error(data.error || 'Event lookup failed');
+    }
+
+    // Process results
+    crawlResults = data.results || [];
+    filteredResults = [...crawlResults];
+
+    // Update stats
+    updateStats({
+      totalMarkets: data.stats?.totalMarkets || 1,
+      totalContenders: data.stats?.uniquePeople || 0,
+      birthDatesFound: data.stats?.birthDatesFound || 0,
+      wikipediaNotFound: data.stats?.wikipediaNotFound || 0,
+      birthDateMissing: data.stats?.birthDateMissing || 0
+    });
+
+    // Show event info
+    if (data.event) {
+      addLocalLog('INFO', `Event: ${data.event.title}`, {
+        slug: data.event.slug,
+        startDate: data.event.startDate,
+        endDate: data.event.endDate
+      });
+    }
+
+    addLocalLog('INFO', 'Event lookup completed', data.stats);
+
+    // Render results
+    if (crawlResults.length > 0) {
+      elements.emptyState.style.display = 'none';
+      elements.tableContainer.style.display = 'block';
+      renderResults();
+    } else {
+      elements.emptyState.innerHTML = '<p style="color: var(--warning);">No people found in this event.</p>';
+    }
+
+  } catch (error) {
+    console.error('Event lookup error:', error);
+    addLocalLog('ERROR', 'Event lookup failed', { message: error.message });
     elements.emptyState.innerHTML = `<p style="color: var(--danger);">Error: ${error.message}</p>`;
     elements.emptyState.style.display = 'block';
   } finally {

@@ -163,6 +163,20 @@ header h1 {
   color: var(--text);
 }
 
+/* URL Input Group */
+.url-row {
+  justify-content: stretch;
+}
+
+.url-input-group {
+  flex: 1;
+  width: 100%;
+}
+
+.url-input-group input {
+  width: 100%;
+}
+
 .btn-primary {
   padding: 0.75rem 2rem;
   background: var(--primary);

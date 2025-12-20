@@ -25,6 +25,10 @@
           <input type="radio" name="dataSource" value="leaderboard">
           <span>Leaderboard</span>
         </label>
+        <label class="source-option">
+          <input type="radio" name="dataSource" value="url">
+          <span>Event URL</span>
+        </label>
       </div>
 
       <!-- Markets Controls -->
@@ -112,6 +116,17 @@
           </div>
         </div>
         <p class="control-hint">Fetches top traders from Polymarket leaderboard and looks up their birthdates.</p>
+      </div>
+
+      <!-- URL Lookup Controls -->
+      <div class="controls-section" id="urlControls" style="display: none;">
+        <div class="controls-row url-row">
+          <div class="control-group url-input-group">
+            <label for="eventUrl">Polymarket Event URL:</label>
+            <input type="url" id="eventUrl" placeholder="https://polymarket.com/event/boxing-andrew-tate-vs-chase-demoor">
+          </div>
+        </div>
+        <p class="control-hint">Paste a Polymarket event URL to extract birth dates for all participants in that event.</p>
       </div>
 
       <button id="runCrawl" class="btn-primary">
