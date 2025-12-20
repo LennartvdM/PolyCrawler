@@ -11,6 +11,7 @@ const elements = {
   runCrawl: document.getElementById('runCrawl'),
   btnText: document.querySelector('.btn-text'),
   btnLoading: document.querySelector('.btn-loading'),
+  categorySelect: document.getElementById('categorySelect'),
   marketLimit: document.getElementById('marketLimit'),
   topContenders: document.getElementById('topContenders'),
   stats: document.getElementById('stats'),
@@ -197,6 +198,7 @@ function setupEventListeners() {
 async function runCrawl() {
   const limit = parseInt(elements.marketLimit.value) || 50;
   const top = parseInt(elements.topContenders.value) || 4;
+  const category = elements.categorySelect.value || '';
   const DEFAULT_BATCH_SIZE = 5;
 
   // Update UI
@@ -215,16 +217,17 @@ async function runCrawl() {
   let peopleData = [];
   let cacheStats = { hits: 0, fetches: 0 };
 
-  addLocalLog('INFO', 'Starting optimized crawl...', { limit, top });
+  addLocalLog('INFO', 'Starting optimized crawl...', { limit, top, category: category || 'all' });
   renderLogs();
   renderResults();
 
   try {
     // Phase 1: Fetch markets and get list of people
-    addLocalLog('INFO', 'Phase 1: Fetching markets...');
-    elements.emptyState.innerHTML = '<p>Fetching markets and extracting names...</p>';
+    addLocalLog('INFO', 'Phase 1: Fetching markets...', { category: category || 'all' });
+    elements.emptyState.innerHTML = `<p>Fetching ${category || 'all'} markets and extracting names...</p>`;
 
-    const marketsResponse = await fetch(`/api/crawl?phase=markets&limit=${limit}&top=${top}`);
+    const categoryParam = category ? `&category=${encodeURIComponent(category)}` : '';
+    const marketsResponse = await fetch(`/api/crawl?phase=markets&limit=${limit}&top=${top}${categoryParam}`);
     const marketsData = await marketsResponse.json();
 
     if (marketsData.logs) {

@@ -2,14 +2,37 @@
  * Netlify Function: Fetch active markets from Polymarket API
  */
 
+/**
+ * Polymarket category slug mapping
+ */
+const CATEGORY_SLUGS = {
+  'politics': 'politics',
+  'sports': 'sports',
+  'finance': 'finance',
+  'crypto': 'crypto',
+  'geopolitics': 'geopolitics',
+  'earnings': 'earnings',
+  'tech': 'tech',
+  'culture': 'culture',
+  'world': 'world',
+  'economy': 'economy',
+  'elections': 'elections',
+  'mentions': 'mentions'
+};
+
 export default async (request, context) => {
   const url = new URL(request.url);
   const limit = parseInt(url.searchParams.get('limit')) || 100;
   const topN = parseInt(url.searchParams.get('top')) || 4;
+  const category = url.searchParams.get('category') || '';
+
+  // Build category filter parameter
+  const categorySlug = category ? CATEGORY_SLUGS[category.toLowerCase()] : '';
+  const tagParam = categorySlug ? `&tag_slug=${categorySlug}` : '';
 
   try {
     // Fetch markets from Polymarket
-    const apiUrl = `https://gamma-api.polymarket.com/markets?limit=${limit}&active=true&closed=false`;
+    const apiUrl = `https://gamma-api.polymarket.com/markets?limit=${limit}&active=true&closed=false${tagParam}`;
 
     const response = await fetch(apiUrl, {
       headers: {
@@ -35,6 +58,7 @@ export default async (request, context) => {
 
     return new Response(JSON.stringify({
       success: true,
+      category: category || 'all',
       count: markets.length,
       markets
     }), {
