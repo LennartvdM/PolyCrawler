@@ -39,6 +39,7 @@ const elements = {
   resultsBody: document.getElementById('resultsBody'),
   filterInput: document.getElementById('filterInput'),
   filterStatus: document.getElementById('filterStatus'),
+  filterDeadline: document.getElementById('filterDeadline'),
   exportCsv: document.getElementById('exportCsv'),
   copyClipboard: document.getElementById('copyClipboard'),
   openSheetsConfig: document.getElementById('openSheetsConfig'),
@@ -152,6 +153,7 @@ function setupEventListeners() {
   // Filters
   elements.filterInput.addEventListener('input', applyFilters);
   elements.filterStatus.addEventListener('change', applyFilters);
+  elements.filterDeadline.addEventListener('change', applyFilters);
 
   // Export
   elements.exportCsv.addEventListener('click', exportToCsv);
@@ -1088,6 +1090,7 @@ function getMarketLink(result) {
 function applyFilters() {
   const searchText = elements.filterInput.value.toLowerCase();
   const statusFilter = elements.filterStatus.value;
+  const deadlineFilter = elements.filterDeadline.value;
 
   filteredResults = crawlResults.filter(r => {
     if (searchText) {
@@ -1101,6 +1104,19 @@ function applyFilters() {
       if (statusFilter === 'found' && r.status !== 'Found') return false;
       if (statusFilter === 'no-date' && !r.status.includes('Birth date not found')) return false;
       if (statusFilter === 'no-wiki' && r.found !== false) return false;
+    }
+
+    if (deadlineFilter !== 'all') {
+      if (!r.marketEndDate) return false;
+      const endDate = new Date(r.marketEndDate);
+      const now = new Date();
+      const hoursUntilDeadline = (endDate - now) / (1000 * 60 * 60);
+
+      if (hoursUntilDeadline < 0) return false; // Already expired
+
+      if (deadlineFilter === '24h' && hoursUntilDeadline > 24) return false;
+      if (deadlineFilter === '48h' && hoursUntilDeadline > 48) return false;
+      if (deadlineFilter === '7d' && hoursUntilDeadline > 168) return false; // 7 * 24 = 168 hours
     }
 
     return true;
