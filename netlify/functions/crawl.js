@@ -76,6 +76,8 @@ export default async (request, context) => {
   const topN = parseInt(url.searchParams.get('top')) || 4;
   const incrementalSince = url.searchParams.get('since'); // ISO date for incremental crawls
   const category = url.searchParams.get('category') || ''; // Category filter (e.g., politics, sports, crypto)
+  const sortBy = url.searchParams.get('sort') || ''; // Sort order (liquidity, volume, startDate, endDate, competitive)
+  const timeWindow = url.searchParams.get('time') || 'weekly'; // For leaderboard: today, weekly, monthly, all
 
   try {
     // Phase: Check cache status for names (helps frontend optimize batching)
@@ -161,8 +163,8 @@ export default async (request, context) => {
 
     // Phase 1: Fetch markets and extract people
     if (phase === 'markets') {
-      log('INFO', 'Phase 1: Fetching markets', { limit, topN, incrementalSince, category: category || 'all' });
-      const { markets, people, lastFetchTime } = await fetchMarketsAndPeople(limit, topN, log, incrementalSince, category);
+      log('INFO', 'Phase 1: Fetching markets', { limit, topN, incrementalSince, category: category || 'all', sort: sortBy || 'default' });
+      const { markets, people, lastFetchTime } = await fetchMarketsAndPeople(limit, topN, log, incrementalSince, category, sortBy);
 
       // Pre-check cache status for smart batching hints
       const cachedNames = new Set();
@@ -268,9 +270,90 @@ export default async (request, context) => {
       });
     }
 
+    // Phase: Leaderboard - fetch top traders from Polymarket leaderboard
+    if (phase === 'leaderboard') {
+      log('INFO', 'Fetching leaderboard', { category, timeWindow, limit });
+
+      try {
+        const leaderboardUrl = `https://polymarket.com/leaderboard/${category}/${timeWindow}/profit`;
+        log('DEBUG', 'Leaderboard URL', { url: leaderboardUrl });
+
+        // Polymarket uses a GraphQL API for leaderboard data
+        // We'll fetch from their public API endpoint
+        const apiUrl = `https://clob.polymarket.com/leaderboard?window=${timeWindow}&limit=${limit}`;
+
+        const response = await fetch(apiUrl, {
+          headers: {
+            'User-Agent': 'PolyCheck/1.1',
+            'Accept': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          log('WARN', 'Leaderboard API failed, trying alternative', { status: response.status });
+
+          // Alternative: use the gamma API's traders endpoint if available
+          return jsonResponse({
+            success: false,
+            error: `Leaderboard API returned ${response.status}. This feature requires access to Polymarket's leaderboard data.`,
+            phase: 'leaderboard',
+            logs: logger.getLogs()
+          }, 500);
+        }
+
+        const leaderboardData = await response.json();
+        log('INFO', 'Leaderboard data fetched', { count: leaderboardData?.length || 0 });
+
+        // Extract trader names from leaderboard
+        const people = (leaderboardData || []).slice(0, limit).map((trader, idx) => ({
+          name: trader.name || trader.username || `Trader ${trader.address?.slice(0, 8)}`,
+          nameKey: (trader.name || trader.username || '').toLowerCase(),
+          rank: idx + 1,
+          profit: trader.profit || trader.pnl || 0,
+          volume: trader.volume || 0,
+          address: trader.address
+        })).filter(p => p.name && !p.name.startsWith('Trader 0x'));
+
+        // Pre-check cache status for smart batching hints
+        const cachedNames = new Set();
+        for (const person of people) {
+          const celebData = getCelebrityData(person.name);
+          if (celebData) {
+            cachedNames.add(person.nameKey);
+          }
+        }
+
+        const cachedCount = cachedNames.size;
+        const uncachedCount = people.length - cachedCount;
+
+        return jsonResponse({
+          success: true,
+          phase: 'leaderboard',
+          people,
+          category,
+          timeWindow,
+          cacheHints: {
+            cachedCount,
+            uncachedCount,
+            suggestedBatchSize: uncachedCount > 10 ? 3 : 5
+          },
+          logs: logger.getLogs()
+        });
+
+      } catch (error) {
+        log('ERROR', 'Leaderboard fetch failed', { error: error.message });
+        return jsonResponse({
+          success: false,
+          error: `Failed to fetch leaderboard: ${error.message}`,
+          phase: 'leaderboard',
+          logs: logger.getLogs()
+        }, 500);
+      }
+    }
+
     // Full mode (legacy) - for backwards compatibility
-    log('INFO', 'Full crawl mode', { limit, topN, category: category || 'all' });
-    const { markets, people } = await fetchMarketsAndPeople(limit, topN, log, null, category);
+    log('INFO', 'Full crawl mode', { limit, topN, category: category || 'all', sort: sortBy || 'default' });
+    const { markets, people } = await fetchMarketsAndPeople(limit, topN, log, null, category, sortBy);
 
     // Limit lookups to avoid timeout
     const maxLookups = 15;
@@ -592,24 +675,44 @@ async function fetchFromWikipedia(name) {
  * Maps user-friendly category names to Polymarket API tag slugs
  */
 const CATEGORY_SLUGS = {
+  // Main Topics
   'politics': 'politics',
   'sports': 'sports',
-  'finance': 'finance',
   'crypto': 'crypto',
-  'geopolitics': 'geopolitics',
-  'earnings': 'earnings',
   'tech': 'tech',
-  'culture': 'culture',
+  'ai': 'ai',
+  'pop-culture': 'pop-culture',
+  // Regions
+  'middle-east': 'middle-east',
   'world': 'world',
+  'geopolitics': 'geopolitics',
+  // Finance
+  'finance': 'finance',
   'economy': 'economy',
+  'earnings': 'earnings',
+  // Other
   'elections': 'elections',
-  'mentions': 'mentions'
+  'culture': 'culture',
+  'mentions': 'mentions',
+  'live-crypto': 'live-crypto'
+};
+
+/**
+ * Sort options mapping
+ * Maps frontend sort values to Polymarket API parameters
+ */
+const SORT_OPTIONS = {
+  'liquidity': { order: 'liquidity', ascending: false },
+  'volume': { order: 'volume24hr', ascending: false },
+  'startDate': { order: 'startDate', ascending: false },
+  'endDate': { order: 'endDate', ascending: true },
+  'competitive': { order: 'competitive', ascending: false }
 };
 
 /**
  * Fetch markets and extract unique people
  */
-async function fetchMarketsAndPeople(limit, topN, log, sinceDateStr = null, category = '') {
+async function fetchMarketsAndPeople(limit, topN, log, sinceDateStr = null, category = '', sortBy = '') {
   const allMarkets = [];
   const lastFetchTime = new Date().toISOString();
 
@@ -617,10 +720,14 @@ async function fetchMarketsAndPeople(limit, topN, log, sinceDateStr = null, cate
   const categorySlug = category ? CATEGORY_SLUGS[category.toLowerCase()] : '';
   const tagParam = categorySlug ? `&tag_slug=${categorySlug}` : '';
 
+  // Build sort parameter
+  const sortOption = sortBy ? SORT_OPTIONS[sortBy.toLowerCase()] : null;
+  const orderParam = sortOption ? `&order=${sortOption.order}&ascending=${sortOption.ascending}` : '';
+
   // Fetch from events endpoint
-  log('INFO', 'Fetching events from Polymarket API', { category: categorySlug || 'all' });
+  log('INFO', 'Fetching events from Polymarket API', { category: categorySlug || 'all', sort: sortBy || 'default' });
   try {
-    const eventsUrl = `https://gamma-api.polymarket.com/events?limit=${limit}&active=true&closed=false${tagParam}`;
+    const eventsUrl = `https://gamma-api.polymarket.com/events?limit=${limit}&active=true&closed=false${tagParam}${orderParam}`;
     const eventsResponse = await fetch(eventsUrl, {
       headers: { 'User-Agent': 'PolyCheck/1.1' }
     });
@@ -652,8 +759,8 @@ async function fetchMarketsAndPeople(limit, topN, log, sinceDateStr = null, cate
   }
 
   // Fetch from markets endpoint
-  log('INFO', 'Fetching markets from Polymarket API', { category: categorySlug || 'all' });
-  const apiUrl = `https://gamma-api.polymarket.com/markets?limit=${Math.max(limit, 100)}&active=true&closed=false${tagParam}`;
+  log('INFO', 'Fetching markets from Polymarket API', { category: categorySlug || 'all', sort: sortBy || 'default' });
+  const apiUrl = `https://gamma-api.polymarket.com/markets?limit=${Math.max(limit, 100)}&active=true&closed=false${tagParam}${orderParam}`;
 
   const marketResponse = await fetch(apiUrl, {
     headers: { 'User-Agent': 'PolyCheck/1.1' }

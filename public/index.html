@@ -15,32 +15,105 @@
     </header>
 
     <section class="controls">
-      <div class="control-group">
-        <label for="categorySelect">Category:</label>
-        <select id="categorySelect">
-          <option value="">All Categories</option>
-          <option value="politics">Politics</option>
-          <option value="sports">Sports</option>
-          <option value="finance">Finance</option>
-          <option value="crypto">Crypto</option>
-          <option value="geopolitics">Geopolitics</option>
-          <option value="earnings">Earnings</option>
-          <option value="tech">Tech</option>
-          <option value="culture">Culture</option>
-          <option value="world">World</option>
-          <option value="economy">Economy</option>
-          <option value="elections">Elections</option>
-          <option value="mentions">Mentions</option>
-        </select>
+      <!-- Source Selector -->
+      <div class="source-selector">
+        <label class="source-option">
+          <input type="radio" name="dataSource" value="markets" checked>
+          <span>Markets</span>
+        </label>
+        <label class="source-option">
+          <input type="radio" name="dataSource" value="leaderboard">
+          <span>Leaderboard</span>
+        </label>
       </div>
-      <div class="control-group">
-        <label for="marketLimit">Markets to fetch:</label>
-        <input type="number" id="marketLimit" value="50" min="1" max="200">
+
+      <!-- Markets Controls -->
+      <div class="controls-section" id="marketsControls">
+        <div class="controls-row">
+          <div class="control-group">
+            <label for="categorySelect">Category:</label>
+            <select id="categorySelect">
+              <option value="">All Categories</option>
+              <optgroup label="Main Topics">
+                <option value="politics">Politics</option>
+                <option value="sports">Sports</option>
+                <option value="crypto">Crypto</option>
+                <option value="tech">Tech</option>
+                <option value="ai">AI</option>
+                <option value="pop-culture">Pop Culture</option>
+              </optgroup>
+              <optgroup label="Regions">
+                <option value="middle-east">Middle East</option>
+                <option value="world">World</option>
+                <option value="geopolitics">Geopolitics</option>
+              </optgroup>
+              <optgroup label="Finance">
+                <option value="finance">Finance</option>
+                <option value="economy">Economy</option>
+                <option value="earnings">Earnings</option>
+              </optgroup>
+              <optgroup label="Other">
+                <option value="elections">Elections</option>
+                <option value="culture">Culture</option>
+                <option value="mentions">Mentions</option>
+                <option value="live-crypto">Live Crypto</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="sortSelect">Sort by:</label>
+            <select id="sortSelect">
+              <option value="">Default</option>
+              <option value="liquidity">Liquidity (Liquid)</option>
+              <option value="volume">Volume (Popular)</option>
+              <option value="startDate">Newest</option>
+              <option value="endDate">Ending Soon</option>
+              <option value="competitive">Competitive</option>
+            </select>
+          </div>
+        </div>
+        <div class="controls-row">
+          <div class="control-group">
+            <label for="marketLimit">Markets to fetch:</label>
+            <input type="number" id="marketLimit" value="50" min="1" max="200">
+          </div>
+          <div class="control-group">
+            <label for="topContenders">Top contenders per market:</label>
+            <input type="number" id="topContenders" value="4" min="1" max="10">
+          </div>
+        </div>
       </div>
-      <div class="control-group">
-        <label for="topContenders">Top contenders per market:</label>
-        <input type="number" id="topContenders" value="4" min="1" max="10">
+
+      <!-- Leaderboard Controls -->
+      <div class="controls-section" id="leaderboardControls" style="display: none;">
+        <div class="controls-row">
+          <div class="control-group">
+            <label for="leaderboardCategory">Category:</label>
+            <select id="leaderboardCategory">
+              <option value="overall">Overall</option>
+              <option value="politics">Politics</option>
+              <option value="crypto">Crypto</option>
+              <option value="sports">Sports</option>
+              <option value="pop-culture">Pop Culture</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="leaderboardTime">Time Period:</label>
+            <select id="leaderboardTime">
+              <option value="today">Today</option>
+              <option value="weekly" selected>Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="all">All Time</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="leaderboardLimit">Traders to fetch:</label>
+            <input type="number" id="leaderboardLimit" value="50" min="1" max="100">
+          </div>
+        </div>
+        <p class="control-hint">Fetches top traders from Polymarket leaderboard and looks up their birthdates.</p>
       </div>
+
       <button id="runCrawl" class="btn-primary">
         <span class="btn-text">Run Crawl</span>
         <span class="btn-loading" style="display:none;">Crawling...</span>
