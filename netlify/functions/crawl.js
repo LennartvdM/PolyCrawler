@@ -75,6 +75,7 @@ export default async (request, context) => {
   const limit = parseInt(url.searchParams.get('limit')) || 50;
   const topN = parseInt(url.searchParams.get('top')) || 4;
   const incrementalSince = url.searchParams.get('since'); // ISO date for incremental crawls
+  const category = url.searchParams.get('category') || ''; // Category filter (e.g., politics, sports, crypto)
 
   try {
     // Phase: Check cache status for names (helps frontend optimize batching)
@@ -160,8 +161,8 @@ export default async (request, context) => {
 
     // Phase 1: Fetch markets and extract people
     if (phase === 'markets') {
-      log('INFO', 'Phase 1: Fetching markets', { limit, topN, incrementalSince });
-      const { markets, people, lastFetchTime } = await fetchMarketsAndPeople(limit, topN, log, incrementalSince);
+      log('INFO', 'Phase 1: Fetching markets', { limit, topN, incrementalSince, category: category || 'all' });
+      const { markets, people, lastFetchTime } = await fetchMarketsAndPeople(limit, topN, log, incrementalSince, category);
 
       // Pre-check cache status for smart batching hints
       const cachedNames = new Set();
@@ -202,6 +203,7 @@ export default async (request, context) => {
       return jsonResponse({
         success: true,
         phase: 'markets',
+        category: category || 'all',
         markets,
         people,
         cacheHints: {
@@ -267,8 +269,8 @@ export default async (request, context) => {
     }
 
     // Full mode (legacy) - for backwards compatibility
-    log('INFO', 'Full crawl mode', { limit, topN });
-    const { markets, people } = await fetchMarketsAndPeople(limit, topN, log);
+    log('INFO', 'Full crawl mode', { limit, topN, category: category || 'all' });
+    const { markets, people } = await fetchMarketsAndPeople(limit, topN, log, null, category);
 
     // Limit lookups to avoid timeout
     const maxLookups = 15;
@@ -586,16 +588,39 @@ async function fetchFromWikipedia(name) {
 }
 
 /**
+ * Polymarket category slug mapping
+ * Maps user-friendly category names to Polymarket API tag slugs
+ */
+const CATEGORY_SLUGS = {
+  'politics': 'politics',
+  'sports': 'sports',
+  'finance': 'finance',
+  'crypto': 'crypto',
+  'geopolitics': 'geopolitics',
+  'earnings': 'earnings',
+  'tech': 'tech',
+  'culture': 'culture',
+  'world': 'world',
+  'economy': 'economy',
+  'elections': 'elections',
+  'mentions': 'mentions'
+};
+
+/**
  * Fetch markets and extract unique people
  */
-async function fetchMarketsAndPeople(limit, topN, log, sinceDateStr = null) {
+async function fetchMarketsAndPeople(limit, topN, log, sinceDateStr = null, category = '') {
   const allMarkets = [];
   const lastFetchTime = new Date().toISOString();
 
+  // Build category filter parameter
+  const categorySlug = category ? CATEGORY_SLUGS[category.toLowerCase()] : '';
+  const tagParam = categorySlug ? `&tag_slug=${categorySlug}` : '';
+
   // Fetch from events endpoint
-  log('INFO', 'Fetching events from Polymarket API');
+  log('INFO', 'Fetching events from Polymarket API', { category: categorySlug || 'all' });
   try {
-    const eventsUrl = `https://gamma-api.polymarket.com/events?limit=${limit}&active=true&closed=false`;
+    const eventsUrl = `https://gamma-api.polymarket.com/events?limit=${limit}&active=true&closed=false${tagParam}`;
     const eventsResponse = await fetch(eventsUrl, {
       headers: { 'User-Agent': 'PolyCheck/1.1' }
     });
@@ -627,8 +652,8 @@ async function fetchMarketsAndPeople(limit, topN, log, sinceDateStr = null) {
   }
 
   // Fetch from markets endpoint
-  log('INFO', 'Fetching markets from Polymarket API');
-  const apiUrl = `https://gamma-api.polymarket.com/markets?limit=${Math.max(limit, 100)}&active=true&closed=false`;
+  log('INFO', 'Fetching markets from Polymarket API', { category: categorySlug || 'all' });
+  const apiUrl = `https://gamma-api.polymarket.com/markets?limit=${Math.max(limit, 100)}&active=true&closed=false${tagParam}`;
 
   const marketResponse = await fetch(apiUrl, {
     headers: { 'User-Agent': 'PolyCheck/1.1' }
